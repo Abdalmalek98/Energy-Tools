@@ -1,4 +1,4 @@
-import { ModelPage, SYSTEM_PROMPT, type Quality } from "@lsr/shared";
+import { hintText, ModelPage, SYSTEM_PROMPT, type Quality } from "@lsr/shared";
 import type { Env } from "./env";
 
 export const MAX_IMAGES = 3;
@@ -21,7 +21,7 @@ export function extractJson(text: string): unknown {
   return JSON.parse(s);
 }
 
-export async function readPage(env: Env, images: string[], quality: Quality) {
+export async function readPage(env: Env, images: string[], quality: Quality, hint?: string | null) {
   const model = quality === "fast" ? env.MODEL_FAST : env.MODEL_BEST;
   const labels = ["Whole page", "Top 56% of the page (zoomed)", "Bottom 56% of the page (zoomed)"];
   const content: unknown[] = [];
@@ -29,7 +29,8 @@ export async function readPage(env: Env, images: string[], quality: Quality) {
     content.push({ type: "text", text: labels[i] ?? `Image ${i + 1}` });
     content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data } });
   });
-  content.push({ type: "text", text: "Transcribe this page. Return the JSON object only." });
+  const ctx = hintText(hint);
+  content.push({ type: "text", text: (ctx ? ctx + "\n" : "") + "Transcribe this page. Return the JSON object only." });
 
   let res: Response;
   try {

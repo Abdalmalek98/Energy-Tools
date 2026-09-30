@@ -2,7 +2,7 @@
 
 ## 0. Blocker to clear before Phase 2
 `reference/` was not in the repository/container. Phase 2 (port of the prototype, golden test) and Phase 5
-(accuracy run) cannot start without: the prototype HTML, the template .xlsx, the Al Raith .xlsx + .pdf, and the
+(accuracy run) cannot start without: the prototype HTML, the template .xlsx, the Al Raith .xlsx (golden fixture), and the
 other sample PDFs. Phase 3 (service) does not depend on them and could start in parallel if you prefer.
 
 ## 1. Repo layout (npm workspaces, TypeScript everywhere)

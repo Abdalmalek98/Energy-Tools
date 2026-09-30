@@ -109,6 +109,18 @@ describe("read-page", () => {
     expect(r3.status).toBe(402); expect(r3.json.error).toBe("quota");
     expect(spy).toHaveBeenCalledTimes(2);
   });
+  it("passes an optional context hint (trimmed, control chars removed) but never as system text", async () => {
+    const spy = mockClaude(() => claudeReply(JSON.stringify(goodPage)));
+    const { code } = await newCode();
+    const a = await activate(code);
+    await call("/v1/read-page", { lease: a.json.lease, images: [imgs[0]], quality: "fast", hint: "Primary school\nArabic names " + "x".repeat(900) });
+    const body = JSON.parse((spy.mock.calls[0][1] as any).body);
+    const last = body.messages[0].content.at(-1).text as string;
+    expect(last).toContain("Primary school Arabic names");
+    expect(last.length).toBeLessThan(800);
+    expect(body.system).not.toContain("Primary school");
+    expect(body.system).not.toMatch(/Raith/i);
+  });
   it("refuses locked codes before calling Claude", async () => {
     const spy = mockClaude(() => claudeReply(JSON.stringify(goodPage)));
     const { id, code } = await newCode();

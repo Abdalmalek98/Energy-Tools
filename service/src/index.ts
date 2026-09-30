@@ -83,7 +83,7 @@ app.post("/v1/read-page", async (c) => {
   if (r.meta.changes === 0) return c.json({ error: "quota", message: `Monthly quota of ${quota} pages reached. It resets on the 1st (UTC).` }, 402);
 
   try {
-    const out = await readPage(c.env, images as string[], quality);
+    const out = await readPage(c.env, images as string[], quality, typeof b.hint === "string" ? b.hint : null);
     await c.env.DB.prepare("INSERT INTO usage (code_id,device_id,ts,pages,model,ok,tokens_in,tokens_out) VALUES (?,?,?,?,?,1,?,?)")
       .bind(code.id, deviceId, now(), 1, out.model, out.tokensIn, out.tokensOut).run();
     await c.env.DB.prepare("UPDATE codes SET last_seen_at=? WHERE id=?").bind(now(), code.id).run();
