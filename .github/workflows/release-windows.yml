@@ -1,0 +1,41 @@
+name: Release (Windows)
+# Builds ChillerPlantAnalyzer.exe and the NSIS installer on a Windows runner.
+# Required repository secrets/variables:
+#   CPA_LICENSE_URL            https URL of your licensing service (baked into the app at build time)
+#   WINDOWS_CERT_PFX_BASE64 / WINDOWS_CERT_PASSWORD   (optional) code-signing certificate
+on:
+  workflow_dispatch:
+  push: { tags: ['v*'] }
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      CPA_LICENSE_URL: ${{ vars.CPA_LICENSE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: node scripts/check-release-keys.mjs --strict
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: cargo test --manifest-path src-tauri/licensing-core/Cargo.toml --release
+      - name: Import code-signing certificate (optional)
+        if: ${{ secrets.WINDOWS_CERT_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", [Convert]::FromBase64String("${{ secrets.WINDOWS_CERT_PFX_BASE64 }}"))
+          $p = ConvertTo-SecureString "${{ secrets.WINDOWS_CERT_PASSWORD }}" -AsPlainText -Force
+          $c = Import-PfxCertificate -FilePath "$env:RUNNER_TEMP\cert.pfx" -CertStoreLocation Cert:\CurrentUser\My -Password $p
+          "TAURI_SIGNING_THUMBPRINT=$($c.Thumbprint)" | Out-File -Append $env:GITHUB_ENV
+      - run: npx tauri build
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory out | Out-Null
+          Copy-Item "src-tauri\target\release\ChillerPlantAnalyzer.exe" out\
+          $s = Get-ChildItem "src-tauri\target\release\bundle\nsis\*-setup.exe" | Select-Object -First 1
+          Copy-Item $s.FullName "out\Chiller Plant Analyzer Setup.exe"
+      - uses: actions/upload-artifact@v4
+        with: { name: chiller-plant-analyzer-windows, path: out/* }

@@ -1,0 +1,16 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: sudo apt-get update && sudo apt-get install -y libreoffice-calc
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm --prefix license-server test
+      - run: node --disable-warning=ExperimentalWarning --test license-manager/test/*.test.js
+      - run: cargo test --manifest-path src-tauri/licensing-core/Cargo.toml

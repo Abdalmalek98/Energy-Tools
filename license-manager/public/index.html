@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>License Manager – Chiller Plant Analyzer</title>
+<style>
+:root{--bg:#f3f6f8;--panel:#fff;--ink:#16222c;--ink2:#4a5a68;--line:#d6dee4;--brand:#0f4c5c;--red:#b42318;--ok:#2e7d32;--amber:#8a6d00}
+@media (prefers-color-scheme:dark){:root{--bg:#0e161c;--panel:#16212a;--ink:#e6eef3;--ink2:#a7b7c3;--line:#2a3b48;--brand:#56b7c9;--red:#ff8f85;--ok:#7fd483;--amber:#f0d060}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+header{background:var(--brand);color:#fff;padding:12px 20px;display:flex;gap:16px;align-items:center}header h1{font-size:18px;margin:0;letter-spacing:.04em;text-transform:uppercase}
+@media (prefers-color-scheme:dark){header{color:#0b1a21}}
+main{padding:20px;display:grid;gap:16px;max-width:1300px;margin:auto}.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+h2{margin:0 0 10px;font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2)}
+table{border-collapse:collapse;width:100%}th,td{padding:6px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{font-size:12px;color:var(--ink2);text-transform:uppercase}
+tr.sel{background:rgba(22,120,141,.15)}tbody tr{cursor:pointer}
+button,input,select,textarea{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink)}button{cursor:pointer}button.p{background:var(--brand);color:#fff;border-color:var(--brand)}button.d{color:var(--red);border-color:var(--red)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--ink2);font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}.s-active{color:var(--ok)}.s-revoked,.s-expired{color:var(--red)}.s-suspended,.s-pending{color:var(--amber)}
+textarea{width:100%;min-height:80px;font:12px monospace;word-break:break-all}#msg{padding:8px 12px;border-radius:8px;display:none}#msg.err{display:block;background:#fbd5d1;color:#7a1b12}#msg.ok{display:block;background:#dff1e0;color:#1d5a20}
+.mono{font-family:ui-monospace,monospace}
+</style></head><body>
+<header><h1>License Manager</h1><span id="who" style="opacity:.8"></span><span style="flex:1"></span><button id="logout" style="display:none">Sign out</button></header>
+<main>
+<div id="msg" role="status"></div>
+<section class="card" id="login"><h2>Sign in</h2><div class="row">
+<label>Licensing service URL<input id="server" size="34"></label><label>Admin token<input id="token" type="password" size="34" autocomplete="off"></label><button class="p" id="go">Sign in</button></div>
+<p style="color:var(--ink2);margin:8px 0 0">The token is kept in memory by this local process only. It is never part of the customer application.</p></section>
+<div id="app" style="display:none;gap:16px;display:none">
+<section class="card"><h2>Licenses</h2><div style="overflow:auto"><table><thead><tr><th>License ID</th><th>Customer</th><th>Created</th><th>Start</th><th>Expiry</th><th>Remaining</th><th>Max</th><th>Active</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table></div></section>
+<section class="card"><h2>Generate license</h2><div class="grid">
+<label>Customer name<input id="c_name"></label><label>Company<input id="c_co"></label><label>Email<input id="c_mail"></label>
+<label>Product<input id="c_prod" value="Chiller Plant Analyzer" readonly></label>
+<label>Duration (days) – empty = perpetual<input id="c_days" type="number" min="1" value="365"></label><label>…or expiry date<input id="c_exp" type="date"></label><label>Start date<input id="c_start" type="date"></label>
+<label>Max activations<input id="c_max" type="number" min="1" value="1"></label>
+<label>Machine binding<select id="c_bind"><option value="none">None</option><option value="first">First machine only</option><option value="specific">Specific machine fingerprint</option></select></label>
+<label>Machine ID (specific binding)<input id="c_mid" placeholder="MID1.…"></label>
+<label>Status<select id="c_status"><option>active</option><option>suspended</option><option>revoked</option></select></label>
+<label>Notes<input id="c_notes"></label></div>
+<div class="row" style="margin-top:12px"><button class="p" id="create">Generate License</button></div></section>
+<section class="card" id="detail" style="display:none"><h2 id="dtitle">License</h2><dl id="dgrid" class="grid" style="margin:0"></dl>
+<div class="row" style="margin:12px 0"><button id="copy">Copy Activation Code</button><button id="export">Export License</button><button id="suspend">Suspend</button><button id="reinstate">Reinstate</button><button class="d" id="revoke">Revoke License</button>
+<label>Days<input id="days" type="number" value="365" style="width:90px"></label><button id="renew">Renew License</button><button id="extend">Extend License</button><button id="replace">Generate replacement license</button></div>
+<textarea id="code" readonly placeholder="Activation code appears here"></textarea>
+<h2 style="margin-top:14px">Activations</h2><div style="overflow:auto"><table><thead><tr><th>#</th><th>Machine</th><th>Activated</th><th>Last seen</th><th>Deactivated</th><th>App</th><th></th></tr></thead><tbody id="acts"></tbody></table></div>
+<div class="row" style="margin-top:10px"><button id="reset">Reset activation count</button><label>Replacement machine ID (optional)<input id="newmid" size="30" placeholder="MID1.…"></label><button id="auth">Authorize replacement machine</button></div></section>
+</div></main>
+<script>
+const $=(i)=>document.getElementById(i);let cur=null;
+const msg=(t,k='ok')=>{const m=$('msg');m.className=k==='ok'?'ok':'err';m.textContent=t;setTimeout(()=>{m.className='';m.style.display=''},6000)};
+async function api(path,method='GET',body){const r=await fetch('/api'+path,{method,headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.message||('HTTP '+r.status));return j}
+const d=(s)=>s?s.slice(0,10):'—';
+async function refresh(){const {licenses}=await api('/licenses');$('rows').innerHTML=licenses.map(l=>`<tr data-id="${l.licenseId}" class="${cur===l.licenseId?'sel':''}"><td class="mono">${l.licenseId}</td><td>${esc(l.customer)}${l.company?' · '+esc(l.company):''}</td><td>${d(l.createdAt)}</td><td>${d(l.startDate)}</td><td>${l.expiryDate?d(l.expiryDate):'perpetual'}</td><td>${l.remainingDays??'∞'}</td><td>${l.maxActivations}</td><td>${l.currentActivations}</td><td class="s-${l.effectiveStatus}">${l.effectiveStatus}</td></tr>`).join('');
+ document.querySelectorAll('#rows tr').forEach(tr=>tr.onclick=()=>select(tr.dataset.id));if(cur)await select(cur,true)}
+const esc=(s)=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function select(id,keep){cur=id;const {license:l,activations}=await api('/licenses/'+encodeURIComponent(id));const {token}=await api('/licenses/'+encodeURIComponent(id)+'/token');
+ $('detail').style.display='block';$('dtitle').textContent=l.licenseId+' – '+l.customer;$('code').value=token;
+ const kv=[['Customer',l.customer],['Company',l.company],['Email',l.email],['Created',d(l.createdAt)],['Start',d(l.startDate)],['Expiry',l.expiryDate?d(l.expiryDate):'perpetual'],['Remaining days',l.remainingDays??'∞'],['Max activations',l.maxActivations],['Current activations',l.currentActivations],['Binding',l.machineBinding],['Status',l.effectiveStatus],['Last validation',l.lastValidation??'—'],['Key ID',l.keyId],['Replaced by',l.replacedBy??'—'],['Notes',l.notes]];
+ $('dgrid').innerHTML=kv.map(([k,v])=>`<div><dt style="font-size:12px;color:var(--ink2)">${k}</dt><dd style="margin:0">${esc(v)}</dd></div>`).join('');
+ $('acts').innerHTML=activations.map(a=>`<tr><td>${a.activationId}</td><td class="mono">${a.machine}…</td><td>${a.activatedAt.slice(0,16)}</td><td>${a.lastSeen.slice(0,16)}</td><td>${a.deactivatedAt?a.deactivatedAt.slice(0,16):'—'}</td><td>${esc(a.appVersion)}</td><td>${a.deactivatedAt?'':`<button data-a="${a.activationId}" class="d">Deactivate machine</button>`}</td></tr>`).join('');
+ document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>run(()=>api('/activations/'+b.dataset.a+'/deactivate','POST',{}),'Machine deactivated'));
+ if(!keep)document.querySelectorAll('#rows tr').forEach(tr=>tr.classList.toggle('sel',tr.dataset.id===id))}
+async function run(fn,ok){try{await fn();msg(ok);await refresh()}catch(e){msg(e.message,'err')}}
+const act=(a,b={})=>api('/licenses/'+encodeURIComponent(cur)+'/'+a,'POST',b);
+$('go').onclick=async()=>{try{await api('/login','POST',{token:$('token').value,server:$('server').value});$('token').value='';$('login').style.display='none';$('app').style.display='grid';$('logout').style.display='';$('who').textContent=$('server').value;await refresh()}catch(e){msg(e.message,'err')}};
+$('logout').onclick=async()=>{await api('/logout','POST');location.reload()};
+$('create').onclick=()=>run(async()=>{const b={customerName:$('c_name').value,companyName:$('c_co').value,email:$('c_mail').value,maxActivations:Number($('c_max').value),machineBinding:$('c_bind').value,machineId:$('c_mid').value||undefined,status:$('c_status').value,notes:$('c_notes').value};
+ if($('c_exp').value)b.expiresAt=$('c_exp').value+'T23:59:59Z';else if($('c_days').value)b.durationDays=Number($('c_days').value);if($('c_start').value)b.startDate=$('c_start').value+'T00:00:00Z';
+ const r=await api('/licenses','POST',b);cur=r.license.licenseId;},'License generated – select it below to copy or export the activation code');
+$('copy').onclick=async()=>{await navigator.clipboard.writeText($('code').value);msg('Activation code copied')};
+$('export').onclick=()=>{const blob=new Blob([JSON.stringify({product:'Chiller Plant Analyzer',licenseId:cur,activationCode:$('code').value},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=cur+'.cpa-license.json';a.click()};
+$('revoke').onclick=()=>confirm('Revoke '+cur+'? Customers are locked out after their next online validation.')&&run(()=>act('revoke'),'Revoked');
+$('suspend').onclick=()=>run(()=>act('suspend'),'Suspended');$('reinstate').onclick=()=>run(()=>act('reinstate'),'Reinstated');
+$('renew').onclick=()=>run(()=>act('renew',{days:Number($('days').value)}),'Renewed – applied at the customer\'s next validation');$('extend').onclick=()=>run(()=>act('extend',{days:Number($('days').value)}),'Extended');
+$('replace').onclick=()=>confirm('Create a replacement license and revoke '+cur+'?')&&run(async()=>{const r=await act('replacement');cur=r.license.licenseId},'Replacement created');
+$('reset').onclick=()=>run(()=>act('reset-activations'),'Activations reset');
+$('auth').onclick=()=>run(()=>{const v=$('newmid').value.trim();const m=v?JSON.parse(atob(v.slice(5).replace(/-/g,'+').replace(/_/g,'/'))):null;return act('authorize-replacement',{machine:m})},'Replacement machine authorized');
+api('/config').then(c=>$('server').value=c.server);
+</script></body></html>
