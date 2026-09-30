@@ -46,7 +46,7 @@ function MachineId({ id }: { id: string }) {
 }
 
 /** Full-screen gate shown when no valid license is present. */
-export function ActivationScreen({ onDone }: { onDone: () => void }) {
+export function ActivationScreen({ onDone, onStart, onCancel }: { onDone: () => void; onStart: () => void; onCancel: () => void }) {
   const { license, activate, licenseBusy } = useStore();
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -56,11 +56,13 @@ export function ActivationScreen({ onDone }: { onDone: () => void }) {
   const expired = license.state === 'expired';
   const go = async () => {
     setError(null);
+    onStart();
     try {
       const s = await activate(code.trim());
       setDone(s);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      onCancel();
     }
   };
   return (

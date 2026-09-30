@@ -9,6 +9,10 @@ edition = "2021"
 description = "Chiller Plant Analyzer – Windows desktop application"
 publish = false
 
+[[bin]]
+name = "ChillerPlantAnalyzer"
+path = "src/main.rs"
+
 [lib]
 name = "chiller_plant_analyzer_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]

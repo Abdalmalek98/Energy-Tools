@@ -26,7 +26,7 @@ const PAGES: Record<PageId, () => JSX.Element | null> = {
 
 export function App() {
   const { license, page, setPage, project, saveCurrent, newProject, openProjectDialog, toasts, analysisError } = useStore();
-  const [entered, setEntered] = useState(false);
+  const [activating, setActivating] = useState(false);
 
   // Ctrl+S / Ctrl+O / Ctrl+N
   useEffect(() => {
@@ -42,7 +42,7 @@ export function App() {
 
   // Startup sequence: local storage → verify license → show Dashboard (or the activation screen).
   if (!license) return <div className="splash"><div>Starting {PRODUCT_NAME}…</div></div>;
-  if (!license.allowed || (!entered && license.state === 'unlicensed')) return <ActivationScreen onDone={() => { setEntered(true); setPage('dashboard'); }} />;
+  if (!license.allowed || activating) return <ActivationScreen onStart={() => setActivating(true)} onCancel={() => setActivating(false)} onDone={() => { setActivating(false); setPage('dashboard'); }} />;
 
   const Page = PAGES[page];
   const groups = [0, 1, 2, 3];

@@ -29,6 +29,8 @@ Verified in this repository's CI-equivalent environment (Linux): all TypeScript/
 Excel workbook (recalculated in LibreOffice, no formula errors, native charts rendered), the Rust client against the real
 Node licensing service, and the Rust code type-checks for the `x86_64-pc-windows-gnu` target (DPAPI, registry, SChannel).
 
+The real Tauri binary (debug build, Linux/WebKitGTK under Xvfb) was also launched and driven: it showed the activation screen, activated against the Node licensing service with a dev-signed code, persisted the encrypted license across a restart, imported the BMS sample through the native file dialog, and exported a 6-chart `.xlsx` through the native save dialog.
+
 **Not verifiable here, and therefore not claimed:** producing `ChillerPlantAnalyzer.exe` / `Chiller Plant Analyzer Setup.exe`
 (needs a Windows runner — `.github/workflows/release-windows.yml` does it), Authenticode signing (needs your certificate),
 and the original acceptance figures for `LC5_CH3__SN_62934227__260628_1539_trend.txt` — that customer file was not part of the

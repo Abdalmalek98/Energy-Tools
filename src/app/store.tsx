@@ -260,11 +260,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try { setLicense(await licensing.deactivate(force)); } finally { setLicenseBusy(false); }
   }, []);
 
+  // Any failure inside a user action (file dialog, disk access, …) is shown instead of being swallowed.
+  const guard = <A extends unknown[]>(fn: (...a: A) => Promise<void>) => async (...a: A) => {
+    try { await fn(...a); } catch (e) { toast(`Error: ${e instanceof Error ? e.message : typeof e === 'string' ? e : JSON.stringify(e)}`); }
+  };
   const value: Store = {
     page, setPage, theme, setTheme, settings, updateSettings, resetSettings,
     table, bmsFileName, mapping, setMapping, autoMapNow, loggers, loggerAnalyses, parsed: pipeline.parsed, analysis: pipeline.analysis, analysisError: pipeline.error,
-    importBms, importBmsFile, clearBms, importLoggers, importLoggerFiles, removeLogger, setLoggerChiller, loggerError, dismissLoggerError: () => setLoggerError(null),
-    exportExcel, exporting, project, recent, newProject, openProjectDialog, openRecent, saveCurrent, saveAs, exportBackup, importBackup,
+    importBms: guard(importBms), importBmsFile, clearBms, importLoggers: guard(importLoggers), importLoggerFiles, removeLogger, setLoggerChiller, loggerError, dismissLoggerError: () => setLoggerError(null),
+    exportExcel, exporting, project, recent, newProject, openProjectDialog: guard(openProjectDialog), openRecent, saveCurrent: guard(saveCurrent), saveAs: guard(saveAs), exportBackup: guard(exportBackup), importBackup: guard(importBackup),
     license, appInfo, licenseBusy, activate, checkLicense, deactivate, refreshLicense, toasts, toast,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
