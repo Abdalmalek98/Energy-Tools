@@ -5,12 +5,16 @@ name: Release (Windows)
 #   WINDOWS_CERT_PFX_BASE64 / WINDOWS_CERT_PASSWORD   (optional) code-signing certificate
 on:
   workflow_dispatch:
-  push: { tags: ['v*'] }
+  push:
+    tags: ['v*']
+    branches: ['claude/chiller-plant-analyzer-desktop-5r9747']
 jobs:
   windows:
     runs-on: windows-latest
     env:
       CPA_LICENSE_URL: ${{ vars.CPA_LICENSE_URL || 'https://licensing.abdalmalek.com' }}
+      WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,13 +24,13 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - run: cargo test --manifest-path src-tauri/licensing-core/Cargo.toml --release
+      - run: cargo test --manifest-path src-tauri/licensing-core/Cargo.toml --release --test licensing
       - name: Import code-signing certificate (optional)
-        if: ${{ secrets.WINDOWS_CERT_PFX_BASE64 != '' }}
+        if: ${{ env.WINDOWS_CERT_PFX_BASE64 != '' }}
         shell: pwsh
         run: |
-          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", [Convert]::FromBase64String("${{ secrets.WINDOWS_CERT_PFX_BASE64 }}"))
-          $p = ConvertTo-SecureString "${{ secrets.WINDOWS_CERT_PASSWORD }}" -AsPlainText -Force
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", [Convert]::FromBase64String($env:WINDOWS_CERT_PFX_BASE64))
+          $p = ConvertTo-SecureString $env:WINDOWS_CERT_PASSWORD -AsPlainText -Force
           $c = Import-PfxCertificate -FilePath "$env:RUNNER_TEMP\cert.pfx" -CertStoreLocation Cert:\CurrentUser\My -Password $p
           "TAURI_SIGNING_THUMBPRINT=$($c.Thumbprint)" | Out-File -Append $env:GITHUB_ENV
       - run: npx tauri build
