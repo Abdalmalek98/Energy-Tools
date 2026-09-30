@@ -10,7 +10,7 @@ jobs:
   windows:
     runs-on: windows-latest
     env:
-      CPA_LICENSE_URL: ${{ vars.CPA_LICENSE_URL }}
+      CPA_LICENSE_URL: ${{ vars.CPA_LICENSE_URL || 'https://licensing.abdalmalek.com' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

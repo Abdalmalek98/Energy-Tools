@@ -11,10 +11,10 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
-/// Placeholder – override at build time with `CPA_LICENSE_URL=https://licensing.yourcompany.com`.
+/// Default licensing service – override at build time with `CPA_LICENSE_URL=https://licensing.yourcompany.com`.
 pub const DEFAULT_LICENSE_URL: &str = match option_env!("CPA_LICENSE_URL") {
     Some(u) => u,
-    None => "https://license.example.com",
+    None => "https://licensing.abdalmalek.com",
 };
 
 pub struct ManagerConfig {

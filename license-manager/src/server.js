@@ -47,7 +47,7 @@ export function createManager({ serverUrl }) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const serverUrl = process.env.CPA_SERVER_URL || 'https://license.example.com';
+  const serverUrl = process.env.CPA_SERVER_URL || 'https://licensing.abdalmalek.com';
   const port = Number(process.env.CPA_MANAGER_PORT || 5177);
   createManager({ serverUrl }).listen(port, '127.0.0.1', () => console.log(`License Manager: http://127.0.0.1:${port}  (service: ${serverUrl})`));
 }

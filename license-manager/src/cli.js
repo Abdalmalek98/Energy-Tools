@@ -2,7 +2,7 @@
 // cpa-admin – command line access to the same admin API.  CPA_SERVER_URL and CPA_ADMIN_TOKEN come from the environment.
 import { AdminApi } from './api.js';
 const [cmd, id, ...rest] = process.argv.slice(2);
-const api = new AdminApi(process.env.CPA_SERVER_URL || 'https://license.example.com', process.env.CPA_ADMIN_TOKEN || '');
+const api = new AdminApi(process.env.CPA_SERVER_URL || 'https://licensing.abdalmalek.com', process.env.CPA_ADMIN_TOKEN || '');
 const opt = (n) => { const i = rest.indexOf(`--${n}`); return i >= 0 ? rest[i + 1] : undefined; };
 const out = (o) => console.log(typeof o === 'string' ? o : JSON.stringify(o, null, 2));
 const usage = `cpa-admin list | show <id> | token <id> | create --customer X [--company X --email X --days N|--expires ISO|--perpetual --max N --binding none|first|specific --machine MID1.… --notes …]
