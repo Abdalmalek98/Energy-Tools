@@ -127,6 +127,14 @@ impl LicenseManager {
             return Err(LicenseError::Invalid("This activation code is bound to a different computer.".into()));
         }
         let cleaned: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+        if tok.off == 1 {
+            if tok.exp.as_deref().and_then(parse).map(|e| e <= now).unwrap_or(false) {
+                return Err(LicenseError::Invalid("This offline license has expired.".into()));
+            }
+            // no network: the signature, dates and machine binding are the entitlement
+            self.store.save(&StoredLicense { token: cleaned, receipt: None, activated_at: iso(now), last_seen: iso(now), lock: None })?;
+            return Ok(self.status());
+        }
         let n = nonce();
         let resp = self.transport.post(
             "/v1/activate",
@@ -155,6 +163,9 @@ impl LicenseManager {
             _ => return self.status(),
         };
         let Ok(tok) = self.ring.open::<TokenPayload>("CPA1", &st.token) else { return self.status() };
+        if tok.off == 1 {
+            return self.status(); // offline licenses never contact the service
+        }
         let n = nonce();
         let result = self.transport.post(
             "/v1/validate",
@@ -198,7 +209,7 @@ impl LicenseManager {
     /// service cannot be reached (the slot then stays occupied until the owner frees it).
     pub fn deactivate(&self, force_local: bool) -> Result<LicenseStatus, LicenseError> {
         if let Ok(Some(st)) = self.store.load() {
-            if let Ok(tok) = self.ring.open::<TokenPayload>("CPA1", &st.token) {
+            if let Some(tok) = self.ring.open::<TokenPayload>("CPA1", &st.token).ok().filter(|t| t.off != 1) {
                 match self.transport.post("/v1/deactivate", &json!({ "licenseId": tok.lid, "machine": self.machine_json(), "appVersion": self.app_version, "nonce": nonce() })) {
                     Ok(_) => {}
                     Err(LicenseError::Network(m)) if !force_local => {

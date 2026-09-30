@@ -54,6 +54,32 @@ pub fn evaluate(stored: Option<&StoredLicense>, ring: &KeyRing, machine: &Machin
         s.message = "This license is bound to a different computer.".into();
         return s;
     }
+    if tok.off == 1 {
+        // Offline license: the signed code is the whole entitlement (dates + machine binding checked above).
+        s.offline_license = true;
+        let (Some(nbf), Some(act)) = (parse(&tok.nbf), parse(&st.activated_at)) else {
+            s.message = "The stored license has unreadable dates.".into();
+            return s;
+        };
+        let eff = now.max(parse(&st.last_seen).unwrap_or(act)).max(act);
+        let exp: Option<DateTime<Utc>> = tok.exp.as_deref().and_then(parse);
+        s.perpetual = tok.exp.is_none();
+        s.expires_at = tok.exp.clone();
+        s.days_remaining = exp.map(|e| ((e - eff).num_seconds() as f64 / 86400.0).ceil() as i64);
+        if nbf > eff {
+            s.state = S::NotYetValid;
+            s.message = format!("This license is not valid until {}.", nbf.format("%Y-%m-%d"));
+        } else if exp.map(|e| e <= eff).unwrap_or(false) {
+            s.state = S::Expired;
+            s.days_remaining = Some(0);
+            s.message = "License expired. Please enter a valid activation code.".into();
+        } else {
+            s.state = S::Active;
+            s.allowed = true;
+            s.message = "Offline license is valid (no online validation required).".into();
+        }
+        return s;
+    }
     let Some(rc_str) = st.receipt.as_deref() else {
         s.state = S::Unlicensed;
         s.message = "This installation has not been activated online yet. Please activate again.".into();

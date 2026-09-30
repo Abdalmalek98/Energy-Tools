@@ -25,6 +25,8 @@ export interface LicenseStatus {
   activations: number | null;
   keyId: string | null;
   offlineNote: string | null;
+  /** Offline license: verified on this computer only; no online validation, cannot be revoked remotely. */
+  offlineLicense: boolean;
 }
 
 export interface AppInfo { version: string; product: string; os: string; arch: string; debug: boolean; }

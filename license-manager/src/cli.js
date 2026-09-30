@@ -13,7 +13,7 @@ try {
     case 'show': out(await api.get(id)); break;
     case 'token': out((await api.token_(id)).token); break;
     case 'create': {
-      const r = await api.create({ customerName: opt('customer'), companyName: opt('company'), email: opt('email'), notes: opt('notes'), durationDays: rest.includes('--perpetual') || opt('expires') ? undefined : Number(opt('days') ?? 365), expiresAt: opt('expires'), maxActivations: Number(opt('max') ?? 1), machineBinding: opt('binding') ?? 'none', machineId: opt('machine') });
+      const r = await api.create({ customerName: opt('customer'), companyName: opt('company'), email: opt('email'), notes: opt('notes'), durationDays: rest.includes('--perpetual') || opt('expires') ? undefined : Number(opt('days') ?? 365), expiresAt: opt('expires'), maxActivations: Number(opt('max') ?? 1), machineBinding: rest.includes('--offline') ? 'specific' : opt('binding') ?? 'none', machineId: opt('machine'), offline: rest.includes('--offline'), allowUnboundOffline: rest.includes('--allow-unbound-offline') });
       out(r.license); out('\nACTIVATION CODE:\n' + r.token); break;
     }
     case 'revoke': case 'suspend': case 'reinstate': case 'reset-activations': out(await api.action(id, cmd)); break;

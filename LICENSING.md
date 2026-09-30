@@ -21,6 +21,13 @@ Expired ⇒ locked ("License expired. Please enter a valid activation code."). C
 
 > **Remote revocation cannot reach a computer that never goes online.** Revoke/suspend take effect at that computer's next successful online validation; an air-gapped machine keeps working until the offline grace period ends. This is inherent to any offline-capable licensing scheme.
 
+## Offline licenses (no server contact)
+An offline license is a normal signed code with `off: 1`. The app verifies it on the PC alone: signature, product, dates and machine binding — no activation, no validation, no grace period. Use it for your own PCs, air-gapped sites or demos.
+* Always machine-bound (`specific`): the customer sends the **Machine ID** from the License screen, you create the license with it (`cpa-admin create --customer "Me" --offline --machine MID1.… --perpetual`, or the "Offline license" choice in the License Manager). An unbound offline code could be copied to any PC, so the server refuses it (`allowUnboundOffline` overrides at your own risk).
+* **It cannot be revoked or suspended remotely** — the computer never talks to the server. Its only limits are its expiry date and its machine. Use a short expiry and issue a new code to renew (the Manager re-signs from the record; renewing the record alone does not change codes already handed out).
+* A large hardware change makes the code stop matching; issue a new code for the new Machine ID (Generate replacement license).
+* Recorded in the database (`offline = 1`) for your own bookkeeping; activation counts do not apply.
+
 ## Machine fingerprint
 Five hashed components (Windows: MachineGuid, computer name, CPU, BIOS, baseboard). Only SHA-256 hashes leave the PC. Two identities are the same machine if the combined hash matches or ≥ 60 % of the components match, so a single hardware swap does not break a licence. Machine ID string for specific-machine licences: `MID1.<base64url(json)>`, shown on the License page.
 Binding modes: `none` (activation count still enforced), `first` (first activating machine), `specific` (machine ID embedded in the signed code).

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS licenses (
   bound_fp            TEXT,                            -- hashed fingerprint the license is bound to
   bound_parts         TEXT,                            -- JSON array of hashed fingerprint components
   features            TEXT NOT NULL DEFAULT '{}',      -- JSON feature flags
+  offline             INTEGER NOT NULL DEFAULT 0,      -- 1 = self-contained offline license (never contacts the server; cannot be revoked remotely)
   key_id              TEXT NOT NULL,                   -- signing key used for the activation code
   last_validation     TEXT,
   replaced_by         TEXT,

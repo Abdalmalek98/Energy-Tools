@@ -410,3 +410,56 @@ fn replayed_server_response_is_rejected() {
     );
     assert!(mgr.activate(&tok).unwrap_err().to_string().contains("not fresh"));
 }
+
+// ---------------------------------------------------------------- offline licenses
+fn offline_token(e: &Env, m: &Machine, edit: impl FnOnce(&mut Value)) -> String {
+    let mut p = json!({
+        "v": 1, "lid": "CPA-2026-000777", "product": "Chiller Plant Analyzer", "customer": "Owner", "company": "", "iat": iso(t0()), "nbf": iso(t0()),
+        "exp": null, "maxAct": 1, "bind": {"mode": "specific", "fp": m.fp, "parts": m.parts}, "features": {"excelExport": true}, "off": 1,
+    });
+    edit(&mut p);
+    e.key.seal("CPA1", p)
+}
+
+#[test]
+fn offline_license_activates_without_any_network_call_and_never_needs_validation() {
+    let e = Env::new();
+    e.srv.lock().unwrap().offline = true; // the licensing service is unreachable throughout
+    let s = e.mgr.activate(&offline_token(&e, &e.machine.clone(), |_| {})).unwrap();
+    assert_eq!(s.state, S::Active);
+    assert!(s.allowed && s.offline_license && s.perpetual);
+    assert!(e.calls.lock().unwrap().is_empty(), "offline licenses must not contact the service");
+    e.advance(3000); // years later: no validation, no grace policy
+    assert_eq!(e.mgr.status().state, S::Active);
+    assert_eq!(e.mgr.check().state, S::Active);
+    assert!(e.calls.lock().unwrap().is_empty());
+    assert_eq!(e.mgr.deactivate(false).unwrap().state, S::Unlicensed);
+    assert!(e.calls.lock().unwrap().is_empty());
+}
+
+#[test]
+fn offline_license_still_enforces_signature_machine_and_expiry() {
+    let e = Env::new();
+    // wrong machine
+    let other = machine("someone-else");
+    let err = e.mgr.activate(&offline_token(&e, &other, |_| {})).unwrap_err();
+    assert!(err.to_string().contains("different computer"), "{err}");
+    // forged (unsigned edit)
+    let tok = offline_token(&e, &e.machine.clone(), |_| {});
+    let mut parts: Vec<String> = tok.split('.').map(String::from).collect();
+    let mut payload: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(&parts[1]).unwrap()).unwrap();
+    payload["bind"] = json!({"mode": "none"});
+    parts[1] = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).unwrap());
+    assert_eq!(e.mgr.activate(&parts.join(".")).unwrap_err(), LicenseError::BadSignature);
+    // expiry is taken from the signed code
+    let short = offline_token(&e, &e.machine.clone(), |p| p["exp"] = json!(iso(t0() + Duration::days(10))));
+    assert_eq!(e.mgr.activate(&short).unwrap().days_remaining, Some(10));
+    e.advance(11);
+    let s = e.mgr.status();
+    assert_eq!(s.state, S::Expired);
+    assert!(!s.allowed);
+    // cache copied to another PC is refused
+    let b = Env::build(machine("B"), |_| {});
+    std::fs::copy(e.dir.path().join("license.dat"), b.dir.path().join("license.dat")).unwrap();
+    assert_eq!(b.mgr.status().state, S::WrongMachine);
+}

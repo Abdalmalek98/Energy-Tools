@@ -238,3 +238,21 @@ test('audit trail records admin actions', () => {
   const rows = svc.db.prepare('SELECT action FROM audit ORDER BY id').all().map((r) => r.action);
   assert.deepEqual(rows, ['create', 'revoke']);
 });
+
+test('offline licenses: require a specific machine, carry off:1, are refused by /activate, survive replacement', () => {
+  const { svc } = setup();
+  const mid = 'MID1.' + Buffer.from(JSON.stringify(M1)).toString('base64url');
+  assert.equal(code(() => create(svc, { offline: true })), 'invalid_request'); // unbound offline code refused
+  assert.equal(code(() => create(svc, { offline: true, machineBinding: 'first' })), 'invalid_request');
+  const { license, token } = create(svc, { offline: true, machineBinding: 'specific', machineId: mid, durationDays: undefined });
+  assert.equal(license.offline, true);
+  assert.equal(license.expiryDate, null);
+  const p = JSON.parse(Buffer.from(token.split('.')[1], 'base64url'));
+  assert.equal(p.off, 1);
+  assert.deepEqual(p.bind, { mode: 'specific', fp: M1.fp, parts: M1.parts });
+  assert.equal(code(() => svc.activate({ token, machine: M1 })), 'offline_license');
+  const rep = svc.replacement(license.licenseId, {});
+  assert.equal(JSON.parse(Buffer.from(rep.token.split('.')[1], 'base64url')).off, 1);
+  // online licenses do not carry the flag
+  assert.equal('off' in JSON.parse(Buffer.from(create(svc).token.split('.')[1], 'base64url')), false);
+});

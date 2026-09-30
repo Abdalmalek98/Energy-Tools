@@ -26,8 +26,14 @@ export function LicenseDetails({ s }: { s: LicenseStatus }) {
       <dt>Days remaining</dt><dd>{s.perpetual ? '∞' : s.daysRemaining ?? '—'}</dd>
       <dt>Status</dt><dd><span className={`chip ${kind}`}>{STATE_LABEL[s.state] ?? s.state}</span></dd>
       <dt>Machine</dt><dd>{MACHINE[s.machineStatus]}</dd>
-      <dt>Last validation</dt><dd>{fmtDateTime(s.lastValidation)}</dd>
-      <dt>Next validation due</dt><dd>{fmtDate(s.nextValidationDue)}{s.graceEndsAt ? ` (offline grace until ${fmtDate(s.graceEndsAt)})` : ''}</dd>
+      {s.offlineLicense ? (
+        <><dt>License type</dt><dd>Offline – verified on this computer, no online validation</dd></>
+      ) : (
+        <>
+          <dt>Last validation</dt><dd>{fmtDateTime(s.lastValidation)}</dd>
+          <dt>Next validation due</dt><dd>{fmtDate(s.nextValidationDue)}{s.graceEndsAt ? ` (offline grace until ${fmtDate(s.graceEndsAt)})` : ''}</dd>
+        </>
+      )}
     </dl>
   );
 }

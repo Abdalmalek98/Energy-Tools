@@ -30,6 +30,9 @@ pub struct TokenPayload {
     pub bind: Binding,
     #[serde(default)]
     pub features: BTreeMap<String, bool>,
+    /// 1 = self-contained offline license: verified locally, never contacts the licensing service.
+    #[serde(default)]
+    pub off: u8,
 }
 
 /// Signed server receipt (`CPR1`): the authoritative licence state at `validated_at` for one machine.
@@ -105,6 +108,8 @@ pub struct LicenseStatus {
     pub key_id: Option<String>,
     /// Set when the last online check could not reach the server.
     pub offline_note: Option<String>,
+    /// True for offline licenses (no online validation, cannot be revoked remotely).
+    pub offline_license: bool,
 }
 
 impl LicenseStatus {
@@ -131,6 +136,7 @@ impl LicenseStatus {
             activations: None,
             key_id: None,
             offline_note: None,
+            offline_license: false,
         }
     }
 }

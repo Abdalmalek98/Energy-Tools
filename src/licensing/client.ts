@@ -27,7 +27,7 @@ function stubStatus(overrides: Partial<LicenseStatus> = {}): LicenseStatus {
     product: PRODUCT_NAME, activatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 90 * 864e5).toISOString(), perpetual: false, daysRemaining: 90,
     machineStatus: 'notBound', machineId: 'MID1.dev', lastValidation: new Date().toISOString(), nextValidationDue: new Date(Date.now() + 7 * 864e5).toISOString(),
     graceEndsAt: new Date(Date.now() + 21 * 864e5).toISOString(), features: { bmsAnalysis: true, flukeAnalysis: true, excelExport: true, plantAnalysis: true, advancedRegression: true },
-    maxActivations: 1, activations: 1, keyId: 'dev-1', offlineNote: null, ...overrides,
+    maxActivations: 1, activations: 1, keyId: 'dev-1', offlineNote: null, offlineLicense: false, ...overrides,
   };
 }
 

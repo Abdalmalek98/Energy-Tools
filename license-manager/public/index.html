@@ -32,6 +32,7 @@ textarea{width:100%;min-height:80px;font:12px monospace;word-break:break-all}#ms
 <label>Max activations<input id="c_max" type="number" min="1" value="1"></label>
 <label>Machine binding<select id="c_bind"><option value="none">None</option><option value="first">First machine only</option><option value="specific">Specific machine fingerprint</option></select></label>
 <label>Machine ID (specific binding)<input id="c_mid" placeholder="MID1.…"></label>
+<label>Offline license (never contacts the server, cannot be revoked)<select id="c_off"><option value="0">No – normal online license</option><option value="1">Yes – offline (needs Machine ID)</option></select></label>
 <label>Status<select id="c_status"><option>active</option><option>suspended</option><option>revoked</option></select></label>
 <label>Notes<input id="c_notes"></label></div>
 <div class="row" style="margin-top:12px"><button class="p" id="create">Generate License</button></div></section>
@@ -52,7 +53,7 @@ async function refresh(){const {licenses}=await api('/licenses');$('rows').inner
 const esc=(s)=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function select(id,keep){cur=id;const {license:l,activations}=await api('/licenses/'+encodeURIComponent(id));const {token}=await api('/licenses/'+encodeURIComponent(id)+'/token');
  $('detail').style.display='block';$('dtitle').textContent=l.licenseId+' – '+l.customer;$('code').value=token;
- const kv=[['Customer',l.customer],['Company',l.company],['Email',l.email],['Created',d(l.createdAt)],['Start',d(l.startDate)],['Expiry',l.expiryDate?d(l.expiryDate):'perpetual'],['Remaining days',l.remainingDays??'∞'],['Max activations',l.maxActivations],['Current activations',l.currentActivations],['Binding',l.machineBinding],['Status',l.effectiveStatus],['Last validation',l.lastValidation??'—'],['Key ID',l.keyId],['Replaced by',l.replacedBy??'—'],['Notes',l.notes]];
+ const kv=[['Customer',l.customer],['Company',l.company],['Email',l.email],['Created',d(l.createdAt)],['Start',d(l.startDate)],['Expiry',l.expiryDate?d(l.expiryDate):'perpetual'],['Remaining days',l.remainingDays??'∞'],['Max activations',l.maxActivations],['Current activations',l.currentActivations],['Binding',l.machineBinding],['Type',l.offline?'OFFLINE – cannot be revoked; renew by issuing a new code':'online'],['Status',l.effectiveStatus],['Last validation',l.lastValidation??'—'],['Key ID',l.keyId],['Replaced by',l.replacedBy??'—'],['Notes',l.notes]];
  $('dgrid').innerHTML=kv.map(([k,v])=>`<div><dt style="font-size:12px;color:var(--ink2)">${k}</dt><dd style="margin:0">${esc(v)}</dd></div>`).join('');
  $('acts').innerHTML=activations.map(a=>`<tr><td>${a.activationId}</td><td class="mono">${a.machine}…</td><td>${a.activatedAt.slice(0,16)}</td><td>${a.lastSeen.slice(0,16)}</td><td>${a.deactivatedAt?a.deactivatedAt.slice(0,16):'—'}</td><td>${esc(a.appVersion)}</td><td>${a.deactivatedAt?'':`<button data-a="${a.activationId}" class="d">Deactivate machine</button>`}</td></tr>`).join('');
  document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>run(()=>api('/activations/'+b.dataset.a+'/deactivate','POST',{}),'Machine deactivated'));
@@ -61,7 +62,7 @@ async function run(fn,ok){try{await fn();msg(ok);await refresh()}catch(e){msg(e.
 const act=(a,b={})=>api('/licenses/'+encodeURIComponent(cur)+'/'+a,'POST',b);
 $('go').onclick=async()=>{try{await api('/login','POST',{token:$('token').value,server:$('server').value});$('token').value='';$('login').style.display='none';$('app').style.display='grid';$('logout').style.display='';$('who').textContent=$('server').value;await refresh()}catch(e){msg(e.message,'err')}};
 $('logout').onclick=async()=>{await api('/logout','POST');location.reload()};
-$('create').onclick=()=>run(async()=>{const b={customerName:$('c_name').value,companyName:$('c_co').value,email:$('c_mail').value,maxActivations:Number($('c_max').value),machineBinding:$('c_bind').value,machineId:$('c_mid').value||undefined,status:$('c_status').value,notes:$('c_notes').value};
+$('create').onclick=()=>run(async()=>{const b={customerName:$('c_name').value,companyName:$('c_co').value,email:$('c_mail').value,maxActivations:Number($('c_max').value),machineBinding:$('c_off').value==='1'?'specific':$('c_bind').value,machineId:$('c_mid').value||undefined,status:$('c_status').value,offline:$('c_off').value==='1',notes:$('c_notes').value};
  if($('c_exp').value)b.expiresAt=$('c_exp').value+'T23:59:59Z';else if($('c_days').value)b.durationDays=Number($('c_days').value);if($('c_start').value)b.startDate=$('c_start').value+'T00:00:00Z';
  const r=await api('/licenses','POST',b);cur=r.license.licenseId;},'License generated – select it below to copy or export the activation code');
 $('copy').onclick=async()=>{await navigator.clipboard.writeText($('code').value);msg('Activation code copied')};

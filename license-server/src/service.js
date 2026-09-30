@@ -60,7 +60,7 @@ export class LicenseService {
       createdAt: r.created_at, startDate: r.start_date, expiryDate: exp, status: r.status,
       effectiveStatus: r.status !== 'active' ? r.status : exp && Date.parse(exp) <= this.now() ? 'expired' : Date.parse(r.start_date) > this.now() ? 'pending' : 'active',
       remainingDays: exp ? Math.ceil((Date.parse(exp) - this.now()) / DAY) : null,
-      maxActivations: r.max_activations, currentActivations: active.length, machineBinding: r.machine_binding,
+      maxActivations: r.max_activations, currentActivations: active.length, machineBinding: r.machine_binding, offline: !!r.offline,
       boundFp: r.bound_fp, features: parseFeatures(r.features), keyId: r.key_id, lastValidation: r.last_validation, replacedBy: r.replaced_by, notes: r.notes,
     };
   }
@@ -70,6 +70,7 @@ export class LicenseService {
       iat: r.created_at, nbf: r.start_date, exp: r.expiry_date, maxAct: r.max_activations,
       bind: r.machine_binding === 'specific' ? { mode: 'specific', fp: r.bound_fp, parts: parseParts(r.bound_parts) } : { mode: r.machine_binding },
       features: parseFeatures(r.features),
+      ...(r.offline ? { off: 1 } : {}),
     });
   }
   receipt(r, act, nonce) {
@@ -108,15 +109,21 @@ export class LicenseService {
       boundFp = m.fp;
       boundParts = JSON.stringify(m.parts);
     }
+    const offline = !!input.offline;
+    if (offline) {
+      // An offline code is self-contained: whoever holds it can use it, and it can never be revoked remotely.
+      if (binding !== 'specific' && !input.allowUnboundOffline) throw new LicenseError('invalid_request', 'Offline licenses must be bound to a specific machine (machine ID), or pass allowUnboundOffline to accept the risk of an unrestricted code', 400);
+      if (expiry === null && !input.allowPerpetualOffline && binding !== 'specific') throw new LicenseError('invalid_request', 'A perpetual offline license needs a specific-machine binding', 400);
+    }
     const status = input.status ?? 'active';
     if (!['active', 'suspended', 'revoked'].includes(status)) throw new LicenseError('invalid_request', 'invalid status', 400);
     const maxAct = Number(input.maxActivations ?? 1);
     if (!Number.isInteger(maxAct) || maxAct < 1) throw new LicenseError('invalid_request', 'maxActivations must be an integer ≥ 1', 400);
     const id = this.nextId();
-    this.db.prepare(`INSERT INTO licenses (license_id, customer_name, company_name, email, product, created_at, start_date, expiry_date, status, max_activations, current_activations, machine_binding, bound_fp, bound_parts, features, key_id, notes)
-      VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?)`).run(
+    this.db.prepare(`INSERT INTO licenses (license_id, customer_name, company_name, email, product, created_at, start_date, expiry_date, status, max_activations, current_activations, machine_binding, bound_fp, bound_parts, features, key_id, notes, offline)
+      VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?)`).run(
       id, customer, input.companyName ?? input.company ?? '', input.email ?? '', input.product ?? PRODUCT, iso(now), iso(start), expiry === null ? null : iso(expiry), status,
-      maxAct, binding, boundFp, boundParts, JSON.stringify({ ...DEFAULT_FEATURES, ...(input.features ?? {}) }), this.keys.activeKid, input.notes ?? '');
+      maxAct, binding, boundFp, boundParts, JSON.stringify({ ...DEFAULT_FEATURES, ...(input.features ?? {}) }), this.keys.activeKid, input.notes ?? '', offline ? 1 : 0);
     this.audit(actor, 'create', id, { customer, expiry: expiry && iso(expiry), maxAct, binding });
     const r = this.row(id);
     return { license: this.view(r), token: this.tokenFor(r) };
@@ -186,8 +193,9 @@ export class LicenseService {
     const r = this.row(id);
     const created = this.createLicense({
       customerName: r.customer_name, companyName: r.company_name, email: r.email, product: r.product,
-      startDate: r.start_date, expiresAt: r.expiry_date, maxActivations: r.max_activations, machineBinding: r.machine_binding === 'specific' ? 'first' : r.machine_binding,
-      features: parseFeatures(r.features), notes: `Replacement for ${id}. ${r.notes}`.trim(), ...overrides,
+      startDate: r.start_date, expiresAt: r.expiry_date, maxActivations: r.max_activations, machineBinding: r.offline ? 'specific' : r.machine_binding === 'specific' ? 'first' : r.machine_binding,
+      ...(r.offline ? { machine: { fp: r.bound_fp, parts: parseParts(r.bound_parts) } } : {}),
+      features: parseFeatures(r.features), offline: !!r.offline, notes: `Replacement for ${id}. ${r.notes}`.trim(), ...overrides,
     }, actor);
     this.db.prepare("UPDATE licenses SET status = 'revoked', replaced_by = ? WHERE license_id = ?").run(created.license.licenseId, id);
     this.audit(actor, 'replace', id, { by: created.license.licenseId });
@@ -236,6 +244,7 @@ export class LicenseService {
     const r = this.db.prepare('SELECT * FROM licenses WHERE license_id = ?').get(t.lid);
     if (!r) throw new LicenseError('unknown_license', 'This license is not known to the licensing service.', 404);
     if (r.product !== PRODUCT || t.product !== PRODUCT) throw new LicenseError('wrong_product', 'This activation code is for a different product.');
+    if (r.offline) throw new LicenseError('offline_license', 'This is an offline license. It does not need activation: it is verified on the computer itself.', 400);
     this.checkUsable(r);
     const me = { fp: machine.fp, parts: machine.parts };
     if (r.machine_binding === 'specific' || (r.machine_binding === 'first' && r.bound_fp)) {
