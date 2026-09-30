@@ -47,7 +47,7 @@ Independent control per customer (30-day, 365-day, revoked, perpetual) needs **n
 
 ## Key management and rotation
 1. `cd license-server && npm run keygen -- k1 ../private-keys` (private PEM, mode 0600; keep out of Git — `*.pem` and `private-keys/` are ignored).
-2. Add the printed public entry to `src-tauri/licensing-core/keys/public-keys.json`, remove the `dev-1` entry, rebuild the app.
+2. Add the printed public entry to `src-tauri/licensing-core/keys/public-keys.json` (done for `k1`; `dev-1` now lives in `keys/dev-keys.json`, compiled into debug builds only), rebuild the app.
 3. Give the service the key: `CPA_SIGNING_KEY_FILE_k1=/secure/path/k1.private.pem`, `CPA_ACTIVE_KEY_ID=k1`.
 4. **Rotate**: generate `k2`, ship an app update containing both public keys, then set `CPA_ACTIVE_KEY_ID=k2` (keep `k1` loaded so existing codes/receipts still verify; mark `"retired": true` in the app keyring later). Apps that lack `k2` show "unknown key … please update".
 The committed `license-server/dev/dev-private-key.pem` (`dev-1`) is a throw-away test key: release builds ignore dev keys and `scripts/check-release-keys.mjs` blocks a release without a production key.

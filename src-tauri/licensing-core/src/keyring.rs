@@ -29,7 +29,11 @@ impl KeyRing {
     /// The keyring compiled into the application. Development keys (`"dev": true`) are honoured in
     /// debug builds only, so a release build never trusts the committed test key.
     pub fn embedded() -> Self {
-        Self::from_json(include_str!("../keys/public-keys.json"), cfg!(debug_assertions)).expect("embedded keyring is valid")
+        let mut ring = Self::from_json(include_str!("../keys/public-keys.json"), false).expect("embedded keyring is valid");
+        // The throw-away development key exists only in debug builds; release binaries do not contain it.
+        #[cfg(debug_assertions)]
+        ring.keys.extend(Self::from_json(include_str!("../keys/dev-keys.json"), true).expect("dev keyring is valid").keys);
+        ring
     }
 
     pub fn from_json(json: &str, allow_dev: bool) -> Result<Self, LicenseError> {
