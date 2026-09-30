@@ -1,0 +1,1 @@
+{ "name": "@lsr/admin-cli", "version": "0.1.0", "private": true, "type": "module", "bin": { "lsr-admin": "cli.mjs" } }

@@ -1,0 +1,20 @@
+name = "lighting-survey-service"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+MODEL_BEST = "claude-opus-5-5"
+MODEL_FAST = "claude-sonnet-5-5"
+ANTHROPIC_BASE_URL = "https://api.anthropic.com"
+# Base64 SPKI Ed25519 public key (from `npm run setup-secrets`); the same value is baked into the app.
+LEASE_PUBLIC_KEY = "REPLACE_WITH_PUBLIC_KEY"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lighting-survey"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+# Secrets (wrangler secret put): ANTHROPIC_API_KEY, LEASE_PRIVATE_KEY, ADMIN_PASSWORD_HASH,
+# ADMIN_TOTP_SECRET, ADMIN_SESSION_SECRET, ADMIN_API_KEY_HASH

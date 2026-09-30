@@ -1,0 +1,13 @@
+{
+  "name": "lighting-survey-reader",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["shared", "service", "admin-cli"],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
