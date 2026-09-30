@@ -7,3 +7,4 @@ export * from "./spaceType";
 export * from "./resolve";
 
 export * from "./excel";
+export * from "./accuracy";

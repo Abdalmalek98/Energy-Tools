@@ -61,6 +61,7 @@ export function ProjectView({ onReview }: { onReview: () => void }) {
     setProgress(null); if (r.stopped) setNote("Stopped."); else if (r.fatal) setNote("Reading stopped because of a licence or quota problem. See the message on the failed page.");
   };
   const anyDone = allPages.some((p) => p.status === "done");
+  const opening = project.files.some((f) => f.loading);          // don't start reading while a PDF is still being opened
 
   return (
     <div className="page">
@@ -87,7 +88,7 @@ export function ProjectView({ onReview }: { onReview: () => void }) {
       ))}
 
       <div className="row bar">
-        <button className="primary" data-testid="read-pages" disabled={!pending.length || !!progress} onClick={() => void doRead(pending.map((p) => p.id))}>{pending.length ? `Read ${pending.length} page${pending.length === 1 ? "" : "s"}` : "Read pages"}</button>
+        <button className="primary" data-testid="read-pages" disabled={!pending.length || !!progress || opening} onClick={() => void doRead(pending.map((p) => p.id))}>{pending.length ? `Read ${pending.length} page${pending.length === 1 ? "" : "s"}` : "Read pages"}</button>
         {progress && <><progress value={progress.done} max={progress.total} data-testid="progress" /><span>{progress.done} / {progress.total}</span><button onClick={stopReading}>Stop</button></>}
         <span className="grow" />
         {anyDone && <button data-testid="go-review" onClick={onReview}>Review results →</button>}

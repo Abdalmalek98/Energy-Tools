@@ -2,10 +2,19 @@
   "name": "lighting-survey-reader",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["shared", "service", "admin-cli", "app"],
+  "workspaces": [
+    "shared",
+    "service",
+    "admin-cli",
+    "app"
+  ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "local": "node scripts/local-licence.mjs",
+    "local:stub": "node scripts/local-licence.mjs --stub",
+    "app:local": "node app/scripts/build-local.mjs --run",
+    "accuracy": "node app/scripts/accuracy.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

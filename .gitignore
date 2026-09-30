@@ -8,3 +8,5 @@ out/
 test-results/
 playwright-report/
 app/e2e/.keys.json
+.local-licence.json
+service/.dev.vars
