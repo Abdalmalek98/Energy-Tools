@@ -1,0 +1,30 @@
+[package]
+name = "licensing-core"
+version = "1.0.0"
+edition = "2021"
+description = "Client-side licensing for Chiller Plant Analyzer: signature verification (public key only), machine fingerprint, protected storage, policy."
+publish = false
+
+[dependencies]
+ed25519-dalek = "2"
+sha2 = "0.10"
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+thiserror = "1"
+aes-gcm = "0.10"
+rand_core = { version = "0.6", features = ["getrandom"] }
+
+[target.'cfg(windows)'.dependencies]
+ureq = { version = "2", default-features = false, features = ["json", "native-tls"] }
+native-tls = "0.2"
+winreg = "0.52"
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+
+[target.'cfg(not(windows))'.dependencies]
+ureq = { version = "2", default-features = false, features = ["json", "tls"] }
+
+[dev-dependencies]
+tempfile = "3"
+rand_core = { version = "0.6", features = ["getrandom"] }

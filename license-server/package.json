@@ -1,0 +1,14 @@
+{
+  "name": "cpa-license-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Chiller Plant Analyzer licensing service (licensing data only – never receives engineering data)",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
+    "keygen": "node scripts/keygen.mjs",
+    "dev-license": "node scripts/dev-license.mjs"
+  }
+}

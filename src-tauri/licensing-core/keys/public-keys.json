@@ -1,0 +1,10 @@
+{
+  "keys": [
+    {
+      "kid": "dev-1",
+      "alg": "ed25519",
+      "public": "pBMlA0CmwvDSmJPxWn+q4tO0hPPl0FKozQ2NNherBww=",
+      "dev": true
+    }
+  ]
+}
