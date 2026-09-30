@@ -7,6 +7,7 @@ import { LicenseManager } from "./license";
 import { readLsr, writeLsr } from "./projectFile";
 import { createService } from "./service";
 import { licenseStore, settingsStore } from "./store";
+import { checkForUpdates, scheduleUpdateChecks } from "./updates";
 
 // settings live in %APPDATA%\LightingSurveyReader
 app.setPath("userData", join(app.getPath("appData"), "LightingSurveyReader"));
@@ -60,6 +61,7 @@ app.whenReady().then(async () => {
   registerIpc();
   createWindow();
   void license.init();
+  scheduleUpdateChecks();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on("window-all-closed", () => { license?.stop(); if (process.platform !== "darwin") app.quit(); });
@@ -121,13 +123,5 @@ function registerIpc() {
   });
   ipcMain.handle("shell:reveal", (_e, p: string) => { if (typeof p === "string") shell.showItemInFolder(p); });
 
-  ipcMain.handle("updates:check", async () => {
-    if (!app.isPackaged) return { message: "Updates are checked in the installed app." };
-    try {
-      const { autoUpdater } = await import("electron-updater");
-      autoUpdater.autoDownload = true;
-      const r = await autoUpdater.checkForUpdates();
-      return { message: r?.updateInfo && r.updateInfo.version !== app.getVersion() ? `Version ${r.updateInfo.version} is downloading. It will install when you close the app.` : "You have the latest version." };
-    } catch { return { message: "Couldn’t check for updates. Try again later." }; }
-  });
+  ipcMain.handle("updates:check", () => checkForUpdates());
 }

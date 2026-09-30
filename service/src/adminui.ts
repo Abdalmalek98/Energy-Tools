@@ -73,7 +73,7 @@ function createForm(){const f=$("form");f.hidden=false;
 async function usage(c){const d=$("detail");d.hidden=false;const j=await api("/codes/"+c.id+"/usage");
  d.replaceChildren(h("div",{class:"row"},h("b",{class:"grow"},"Usage — "+c.customer+" …"+c.last5),h("button",{onclick:()=>d.hidden=true},"Close")),
  h("p",{class:"mut"},"Devices: "+(j.devices.map(x=>"#"+x.id+" last seen "+fmt(x.last_seen)+" v"+(x.app_version||"?")).join(" · ")||"none")),
- h("table",{},h("tr",{},...["Time","Pages","Model","OK","Error"].map(x=>h("th",{},x))),...j.usage.map(u=>h("tr",{},h("td",{},fmt(u.ts)),h("td",{},u.pages),h("td",{},u.model||""),h("td",{},u.ok?"yes":"no"),h("td",{},u.error||"")))),
+ h("table",{},h("tr",{},...["Time","Pages","Model","Tokens in/out","OK","Error"].map(x=>h("th",{},x))),...j.usage.map(u=>h("tr",{},h("td",{},fmt(u.ts)),h("td",{},u.pages),h("td",{},u.model||""),h("td",{},u.tokens_in!=null?u.tokens_in+" / "+u.tokens_out:""),h("td",{},u.ok?"yes":"no"),h("td",{},u.error||"")))),
  h("p",{},h("b",{},"Events")),h("table",{},...j.audit.map(a=>h("tr",{},h("td",{},fmt(a.ts)),h("td",{},a.actor),h("td",{},a.action),h("td",{},a.ip||""),h("td",{},a.detail||"")))));d.scrollIntoView()}
 async function audit(){const d=$("detail");d.hidden=false;const j=await api("/audit");d.replaceChildren(h("div",{class:"row"},h("b",{class:"grow"},"Audit log (latest 200)"),h("button",{onclick:()=>d.hidden=true},"Close")),
  h("table",{},...j.audit.map(a=>h("tr",{},h("td",{},fmt(a.ts)),h("td",{},a.actor),h("td",{},a.action),h("td",{},a.code_id??""),h("td",{},a.ip||""),h("td",{},a.detail||"")))))}

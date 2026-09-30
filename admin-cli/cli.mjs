@@ -34,7 +34,7 @@ const commands = {
   async extend() { await api(`/codes/${id()}/extend`, "POST", flags.end ? { fixedEnd: flags.end } : { days: +flags.days }); console.log("extended"); },
   async "reset-devices"() { await api(`/codes/${id()}/reset-devices`, "POST", {}); console.log("devices reset"); },
   async delete() { await api(`/codes/${id()}`, "DELETE"); console.log("deleted"); },
-  async usage() { const j = await api(`/codes/${id()}/usage`); console.log("devices:", j.devices); console.table(j.usage.map((u) => ({ time: d(u.ts), pages: u.pages, model: u.model, ok: u.ok, error: u.error }))); },
+  async usage() { const j = await api(`/codes/${id()}/usage`); console.log("devices:", j.devices); console.table(j.usage.map((u) => ({ time: d(u.ts), pages: u.pages, model: u.model, tokens_in: u.tokens_in, tokens_out: u.tokens_out, ok: u.ok, error: u.error }))); },
   async audit() { const j = await api("/audit"); console.table(j.audit.map((a) => ({ time: d(a.ts), actor: a.actor, action: a.action, code: a.code_id, ip: a.ip, detail: a.detail }))); },
 };
 if (!commands[cmd]) {

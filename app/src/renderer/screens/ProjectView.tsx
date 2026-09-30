@@ -80,7 +80,7 @@ export function ProjectView({ onReview }: { onReview: () => void }) {
         <section className="card file" key={f.id} data-testid="file-card">
           <div className="row">
             <label className="field grow">Building name<input dir="auto" data-testid="building" value={f.building} onChange={(e) => dispatch({ t: "patchFile", id: f.id, patch: { building: e.target.value } })} /></label>
-            <span className="muted small" dir="auto">{f.name}{f.loading ? " · opening…" : ` · ${f.pages.length} page${f.pages.length === 1 ? "" : "s"}`}</span>
+            <span className="muted small"><bdi>{f.name}</bdi>{f.loading ? " · opening…" : ` · ${f.pages.length} page${f.pages.length === 1 ? "" : "s"}`}</span>
             <button className="danger" onClick={() => { f.pages.forEach((p) => images.delete(p.id)); dispatch({ t: "removeFile", id: f.id }); }}>Remove</button>
           </div>
           <div className="thumbs">{f.pages.map((p, i) => <Thumb key={p.id} page={p} index={i} onRotate={(r) => dispatch({ t: "rotate", pageId: p.id, rotation: r })} onRetry={() => void doRead([p.id])} />)}</div>

@@ -1,0 +1,29 @@
+name: Release
+# Tag vX.Y.Z → builds the Windows installer + portable zip and publishes them (with latest.yml for auto-update) to the releases repo.
+on: { push: { tags: ["v*"] } }
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm test
+      - name: Build, (sign) and publish
+        working-directory: app
+        shell: bash
+        run: npm run dist -- --publish always
+        env:
+          # baked into the app at build time (Settings → Secrets and variables → Actions → Variables)
+          LSR_SERVICE_URL: ${{ vars.LSR_SERVICE_URL }}
+          LSR_PUBLIC_KEY: ${{ vars.LSR_PUBLIC_KEY }}
+          LSR_CONTACT: ${{ vars.LSR_CONTACT }}
+          LSR_DEVICE_SALT: ${{ vars.LSR_DEVICE_SALT }}
+          # token with write access to the releases repo (Abdalmalek98/lighting-survey-reader-releases)
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          # optional Authenticode signing: base64 .pfx + password. Leave unset for an unsigned build.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with: { name: windows-build, path: "app/release/*.exe\napp/release/*.zip\napp/release/latest.yml" }

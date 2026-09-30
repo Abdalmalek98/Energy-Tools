@@ -20,6 +20,7 @@ async function modelPages() {
   const v = (c: any) => (c && typeof c === "object" && "result" in c ? c.result : c) ?? null;
   const rows: Record<string, any>[] = []; let prev: Record<string, any> = {};
   for (let r = 3; r <= 41; r++) {
+    if ((r - 3) % 13 === 0) prev = {};                                                     // each canned sheet is self-contained (no ditto across pages)
     const o: Record<string, any> = { row: ((r - 3) % 13) + 1, uncertain: [], note: null };
     for (const [c, k] of Object.entries(COLKEY)) { const x = v(ws.getCell(c + r).value); o[k] = x !== null && x === prev[k] && !["room_name", "room_tag"].includes(k) ? "^" : x; prev[k] = x; }
     const area = v(ws.getCell("AA" + r).value); o.dimensions = area ? `${area}x1` : null;

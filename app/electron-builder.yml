@@ -1,0 +1,33 @@
+appId: com.lightingsurveyreader.app
+productName: Lighting Survey Reader
+copyright: Copyright © Lighting Survey Reader
+asar: true
+artifactName: LightingSurveyReader-${version}-portable.${ext}   # the zip target; the installer overrides it below
+directories: { output: release, buildResources: build }
+files:
+  - out/**
+  - package.json
+extraResources:
+  - { from: resources/template.xlsx, to: template.xlsx }
+win:
+  target:
+    - { target: nsis, arch: [x64] }
+    - { target: zip, arch: [x64] }
+  icon: build/icon.ico
+  # Authenticode: set CSC_LINK (path/base64 of your .pfx) and CSC_KEY_PASSWORD in the environment and the build signs automatically.
+  # Without them the build is unsigned (Windows SmartScreen will warn — see docs/USER_GUIDE.md).
+  forceCodeSigning: false
+nsis:
+  oneClick: true            # simple for customers
+  perMachine: false         # per-user install: no admin rights needed
+  allowElevation: false
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+  artifactName: LightingSurveyReader-Setup-${version}.${ext}
+# Auto-update via GitHub Releases. Installers are useless without a licence code, so the releases repo can be public.
+publish:
+  provider: github
+  owner: Abdalmalek98
+  repo: lighting-survey-reader-releases
+  releaseType: release
+electronVersion: 33.4.11
