@@ -1,0 +1,38 @@
+{
+  "name": "@lsr/app",
+  "productName": "Lighting Survey Reader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lighting Survey Reader",
+  "author": "Lighting Survey Reader",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit",
+    "e2e": "node e2e/prepare.mjs && xvfb-run -a playwright test",
+    "dist": "npm run build && electron-builder --win --x64"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "exceljs": "4.4.0",
+    "jszip": "^3.10.1",
+    "pdfjs-dist": "^4.10.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@lsr/shared": "*",
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "vite": "^5.4.0",
+    "vitest": "~2.1.0"
+  }
+}
