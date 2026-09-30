@@ -68,3 +68,30 @@ describe('logger / BMS merge', () => {
     expect(withL.kpis.chillerKWh).not.toBeCloseTo(without.kpis.chillerKWh, 3);
   });
 });
+
+import { runPipeline } from '../src/analysis/pipeline';
+import { suggestChiller } from '../src/analysis/merge';
+
+describe('pipeline: upload order independence', () => {
+  it('BMS-then-logger and logger-then-BMS give identical results; BMS power column is optional when a logger is attached', () => {
+    const table = parseTable(makeBmsCsv({ steps: 48 }));
+    const s = S({ analyseLoggedPeriodOnly: false });
+    const mapping = autoMap(table.headers);
+    const lg = logger('ch1', Array.from({ length: 300 }, (_, i) => [T0 + i * 60000 + 30000, 240 + (i % 9)] as [number, number]), 1);
+    const attach = [{ data: lg, chiller: suggestChiller(lg, ['CH1', 'CH2']) }];
+    expect(attach[0].chiller).toBe('CH1');
+    const bmsFirst = runPipeline({ table, mapping, settings: s, loggers: [] });
+    const withLogger = runPipeline({ table, mapping, settings: s, loggers: attach });
+    // "logger first": state holds the logger before the table arrives → pipeline with no table yields nothing, then the same inputs
+    expect(runPipeline({ table: null, mapping: {}, settings: s, loggers: attach }).analysis).toBeNull();
+    const loggerFirst = runPipeline({ table, mapping, settings: s, loggers: attach });
+    expect(JSON.stringify(loggerFirst.analysis!.kpis)).toBe(JSON.stringify(withLogger.analysis!.kpis));
+    expect(withLogger.analysis!.kpis.chillerKWh).not.toBeCloseTo(bmsFirst.analysis!.kpis.chillerKWh, 3);
+    // no BMS power column mapped, logger supplies it
+    const noPower = runPipeline({ table, mapping: { ...mapping, power: undefined }, settings: s, loggers: attach });
+    expect(noPower.error).toBeNull();
+    expect(noPower.analysis!.chillerRows.every((r) => r.chiller === 'CH1')).toBe(true);
+    // without a logger the missing power column is reported clearly
+    expect(runPipeline({ table, mapping: { ...mapping, power: undefined }, settings: s, loggers: [] }).error).toContain('Unable to identify the chiller power');
+  });
+});

@@ -27,9 +27,9 @@ export function makeBmsCsv(opts: { steps?: number; delimiter?: string; decimalCo
   for (let i = 0; i < steps; i++) {
     const t = new Date(Date.UTC(2026, 6, 1, 0, 0) + i * 300000);
     const ts = `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())} ${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}`;
-    const load = 0.45 + 0.4 * Math.sin((i / steps) * Math.PI);
+    const load = 0.5 + 0.42 * Math.sin(((i % 288) / 288) * 2 * Math.PI - Math.PI / 2); // daily cycle
     for (const [id, eff] of [['CH1', 0.6], ['CH2', 0.7]] as const) {
-      const flow = 60 + 60 * load + r() * 2;
+      const flow = 20 + 60 * load + r() * 2;
       const dT = 5.5;
       const tr = (flow * 4.186 * dT) / 3.51685;
       const kW = tr * (eff + 0.1 * (1 - load)) + r();
