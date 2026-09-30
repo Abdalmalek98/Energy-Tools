@@ -1,0 +1,11 @@
+node_modules/
+dist/
+target/
+*.pem
+!license-server/dev/dev-private-key.pem
+.env
+*.db
+*.db-journal
+private-keys/
+out/
+.scratch/
