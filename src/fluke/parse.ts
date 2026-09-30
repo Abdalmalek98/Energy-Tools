@@ -122,8 +122,12 @@ function tableToLogger(fileName: string, table0: RawTable, preamble: string, opt
   const col = (re: RegExp) => headers.findIndex((h) => re.test(h));
 
   // ---- timestamp / duration columns
+  // Energy Analyze exports: Start(<tz>);Stop(<tz>);Trend_Period(seconds);… – midpoint = (start+stop)/2
+  const startIdx = col(/^start\b/i);
+  const stopIdx = col(/^(stop|end)\b/i);
   let tsIdx = col(/^(trend_period|date.?time|time.?stamp|timestamp)/i);
   if (tsIdx < 0) tsIdx = col(/(^|_)(date.?time|time.?stamp|start)/i);
+  if (startIdx >= 0 && stopIdx >= 0) tsIdx = startIdx;
   const dateIdx = col(/^date$/i);
   const timeIdx = col(/^time$/i);
   let durationSec: number | null = null;
@@ -132,11 +136,19 @@ function tableToLogger(fileName: string, table0: RawTable, preamble: string, opt
     values = rows.map((r) => (r[tsIdx] ?? '').split(/\s+(?:-|–|to)\s+/i)[0]);
     // Trend_Period may be a duration ("00:05:00" or seconds) rather than a timestamp
     const s0 = (rows[0]?.[tsIdx] ?? '').trim();
-    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(s0) && !/\d{4}/.test(s0)) {
+    if (/^\d{1,6}$/.test(s0) && Number(s0) <= 86400) {
+      durationSec = Number(s0); // Trend_Period in seconds
+      values = null;
+    } else if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(s0) && !/\d{4}/.test(s0)) {
       const [h, m, s] = s0.split(':').map(Number);
       durationSec = h * 3600 + m * 60 + (s || 0);
       values = null;
     }
+  }
+  const periodIdx = col(/^trend_period$/i);
+  if (!durationSec && periodIdx >= 0) {
+    const v = parseNumber(rows[0]?.[periodIdx]);
+    if (Number.isFinite(v) && v > 0 && v <= 86400) durationSec = v;
   }
   if (!values && dateIdx >= 0 && timeIdx >= 0) values = rows.map((r) => `${r[dateIdx]} ${r[timeIdx]}`);
   if (!values && dateIdx >= 0) values = rows.map((r) => r[dateIdx]);
@@ -149,6 +161,7 @@ function tableToLogger(fileName: string, table0: RawTable, preamble: string, opt
   }
   let interval = detectIntervalMinutes(tp.values);
   if (durationSec) interval = durationSec / 60;
+  const stopTs = startIdx >= 0 && stopIdx >= 0 ? parseTimestamps(rows.map((r) => r[stopIdx] ?? '')).values : null;
   if (!Number.isFinite(interval)) interval = NaN;
   const dCol = col(/^(trend_)?(period|duration|interval)(_s|_sec)?$/i);
   if (dCol >= 0 && dCol !== tsIdx && !Number.isFinite(interval)) {
@@ -174,7 +187,8 @@ function tableToLogger(fileName: string, table0: RawTable, preamble: string, opt
     if (powerIdx < 0) powerIdx = auto(/^active.?power(.*avg|.*average)?$|^kw$|^power.*\(k?w\)/i);
     if (powerIdx >= 0) powerName = headers[powerIdx];
   }
-  const phaseIdx = [1, 2, 3].map((n) => headers.findIndex((h) => new RegExp(`^PowerP_L${n}(_avg)?$`, 'i').test(h)));
+  const phaseFor = (n: number, letter: string) => headers.findIndex((h) => new RegExp(`^PowerP_(L${n}|${letter})(_avg)?$`, 'i').test(h));
+  const phaseIdx = [phaseFor(1, 'A'), phaseFor(2, 'B'), phaseFor(3, 'C')];
   const havePhases = phaseIdx.every((i) => i >= 0);
 
   let kwSeries: number[] | null = null;
@@ -264,14 +278,17 @@ function tableToLogger(fileName: string, table0: RawTable, preamble: string, opt
   for (let i = 0; i < rows.length; i++) {
     const t = tp.values[i];
     if (!Number.isFinite(t)) continue;
-    const s: LoggerSample = { ts: t + shift, kW: kwSeries[i] };
+    const stop = stopTs ? stopTs[i] : NaN;
+    // real period bounds when available (the first row of an export is usually a partial period)
+    const mid = Number.isFinite(stop) ? (t + stop) / 2 : t + shift;
+    const s: LoggerSample = { ts: mid, kW: kwSeries[i] };
     if (phaseKw) s.phases = [phaseKw[0][i], phaseKw[1][i], phaseKw[2][i]];
     samples.push(s);
   }
   samples.sort((a, b) => a.ts - b.ts);
   if (!samples.length) throw new FlukeError('No rows with a valid timestamp were found.');
   if (tp.kind !== 'unknown') notes.push(`Timestamp format: ${tp.kind}.`);
-  notes.push(`Timestamps treated as ${refers === 'mid' ? 'interval midpoints' : `interval ${refers}s; midpoint = ${refers === 'start' ? 'start + ' : 'end − '}${fmtHalf(interval)}`}.`);
+  if (stopTs) notes.push('Sample time = midpoint of the Start and Stop columns.'); else notes.push(`Timestamps treated as ${refers === 'mid' ? 'interval midpoints' : `interval ${refers}s; midpoint = ${refers === 'start' ? 'start + ' : 'end − '}${fmtHalf(interval)}`}.`);
   if (unitAssumed) notes.push(`Power unit not stated in the file – assumed ${sourceUnit}.`);
   if (derivedFromPhases) sourceUnit = sourceUnit === 'kW' ? 'kW' : 'W';
 

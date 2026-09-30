@@ -9,3 +9,6 @@ target/
 private-keys/
 out/
 .scratch/
+
+# Customer engineering data – keep local, never commit
+sample-data/LC5_CH3__SN_62934227__260628_1539_trend.txt

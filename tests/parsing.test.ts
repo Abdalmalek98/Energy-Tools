@@ -291,3 +291,21 @@ describe('Logger-only analysis (synthetic ground truth)', () => {
     expect(analyzeLogger(mk(Array(10).fill(1000), ph2)).flags.find((f) => f.title === 'Phase imbalance')!.status).toBe('Review');
   });
 });
+
+describe('real Energy Analyze export layout (Start;Stop;Trend_Period;PowerP_A/B/C/Total_avg, semicolons, CRLF)', () => {
+  const text = [
+    'Start(Arab Standard Time);Stop(Arab Standard Time);Trend_Period;PowerP_A_avg;PowerP_B_avg;PowerP_C_avg;PowerP_Total_avg;PowerPfund_Total_avg;ActiveEnergy_Total_avg',
+    '2026-06-28 15:39:48.124;2026-06-28 15:40:00.129;300;3196.12;-3961.29;2580.97;1815.79;1829.42;6.05',
+    '2026-06-28 15:40:00.129;2026-06-28 15:45:00.172;300;3009.34;-4002.01;2470.23;1477.56;1538.37;123.1',
+    '2026-06-28 15:45:00.172;2026-06-28 15:50:00.061;300;3004.6;-3992.82;2482.58;1494.35;1553;124.4',
+  ].join('\r\n');
+  it('uses Trend_Period seconds as the interval, Start/Stop midpoints, PowerP_Total_avg and A/B/C phases', async () => {
+    const d = await parseFlukeFile('LC5_CH3__SN_62934227__x_trend.txt', new TextEncoder().encode(text));
+    expect(d.intervalMinutes).toBe(5);
+    expect(d.powerColumn).toBe('PowerP_Total_avg');
+    expect(d.samples[1].kW).toBeCloseTo(1.47756, 6);
+    expect(d.samples[1].phases![1]).toBeCloseTo(-4.00201, 6);
+    expect(d.samples[1].ts).toBe((Date.UTC(2026, 5, 28, 15, 40, 0, 129) + Date.UTC(2026, 5, 28, 15, 45, 0, 172)) / 2);
+    expect(d.samples).toHaveLength(3);
+  });
+});
