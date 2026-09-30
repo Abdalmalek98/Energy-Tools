@@ -28,6 +28,13 @@ An offline license is a normal signed code with `off: 1`. The app verifies it on
 * A large hardware change makes the code stop matching; issue a new code for the new Machine ID (Generate replacement license).
 * Recorded in the database (`offline = 1`) for your own bookkeeping; activation counts do not apply.
 
+### Making offline codes without Node or a server (Git Bash + OpenSSL)
+```bash
+scripts/offline-license.sh --key ~/cpa-keys/k1.private.pem --kid k1 \
+    --machine "MID1.…(from the app's activation screen)" --customer "Your Name" --perpetual      # or --days 365
+```
+Prints the activation code (details on stderr). It signs locally with your private key; nothing is sent anywhere. The application must be a build that contains the matching public key (`k1`).
+
 ## Machine fingerprint
 Five hashed components (Windows: MachineGuid, computer name, CPU, BIOS, baseboard). Only SHA-256 hashes leave the PC. Two identities are the same machine if the combined hash matches or ≥ 60 % of the components match, so a single hardware swap does not break a licence. Machine ID string for specific-machine licences: `MID1.<base64url(json)>`, shown on the License page.
 Binding modes: `none` (activation count still enforced), `first` (first activating machine), `specific` (machine ID embedded in the signed code).

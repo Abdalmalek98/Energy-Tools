@@ -463,3 +463,38 @@ fn offline_license_still_enforces_signature_machine_and_expiry() {
     std::fs::copy(e.dir.path().join("license.dat"), b.dir.path().join("license.dat")).unwrap();
     assert_eq!(b.mgr.status().state, S::WrongMachine);
 }
+
+/// The shell script that owners use (bash + OpenSSL, no Node) must produce codes the real Rust client accepts.
+#[test]
+fn owner_script_offline_code_is_accepted_by_the_client() {
+    use std::process::Command;
+    let have = |c: &str| Command::new(c).arg("version").output().or_else(|_| Command::new(c).arg("--version").output()).map(|o| o.status.success()).unwrap_or(false);
+    if !have("openssl") || !have("bash") { eprintln!("openssl/bash missing – skipping"); return; }
+    let dir = tempfile::tempdir().unwrap();
+    let key = dir.path().join("k.pem");
+    assert!(Command::new("openssl").args(["genpkey", "-algorithm", "ed25519", "-out"]).arg(&key).status().unwrap().success());
+    let der = Command::new("openssl").args(["pkey", "-pubout", "-outform", "DER", "-in"]).arg(&key).output().unwrap().stdout;
+    let pubkey = STANDARD.encode(&der[der.len() - 32..]);
+    let ring = KeyRing::from_json(&json!({"keys": [{"kid": "k1", "alg": "ed25519", "public": pubkey}]}).to_string(), false).unwrap();
+    let m = machine("owner-pc");
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/offline-license.sh");
+    let run = |machine: &str, extra: &[&str]| {
+        let o = Command::new("bash").arg(&script).args(["--key"]).arg(&key).args(["--kid", "k1", "--machine", machine, "--customer", "Abdalmalek"]).args(extra).output().unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8(o.stdout).unwrap().trim().to_string()
+    };
+    // the script stamps real time, so this client runs on the real clock
+    let code = run(&m.machine_id(), &["--perpetual"]);
+    let now_real = Utc::now();
+    let d = tempfile::tempdir().unwrap();
+    let client = LicenseManager::with_parts(LicenseStore::new(d.path().join("l.dat"), Box::new(PortableBox)), ring.clone(), m.clone(), Box::new(FakeServer { srv: Arc::new(Mutex::new(Srv { status: "active".into(), exp: None, nbf: t0(), lid: "x".into(), reject: None, offline: true, max_act: 1 })), key: Signing::new("k1", 7), now: Arc::new(Mutex::new(now_real)), calls: Arc::new(Mutex::new(vec![])) }), "1.0.0".into(), Box::new(move || now_real + Duration::minutes(1)));
+    let s = client.activate(&code).expect("client must accept the script's code");
+    assert!(s.allowed && s.offline_license && s.perpetual);
+    assert_eq!(s.customer.as_deref(), Some("Abdalmalek"));
+    // a code for another machine is refused; a tampered code is refused
+    let other = run(&machine("someone").machine_id(), &["--days", "30"]);
+    assert!(client.activate(&other).is_err());
+    let mut bad = code.clone();
+    bad.replace_range(30..31, if &bad[30..31] == "A" { "B" } else { "A" });
+    assert!(client.activate(&bad).is_err());
+}
