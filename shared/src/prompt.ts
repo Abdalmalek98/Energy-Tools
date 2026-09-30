@@ -16,7 +16,7 @@ HOW SURVEYORS FILL IT:
 - The collector's name is written once near the top-left (sometimes only a signature). The date is often written once, vertically across the Date column (e.g. "10-2-26", "15-02-2026"). Copy the date exactly as written; dates are day-month-year.
 - Room dimensions (length x width in metres) are written OUTSIDE the table in the right margin, e.g. "4x5". Writers often place them slightly below the row they belong to. Match each to its row. If the list looks shifted by one row (e.g. nothing beside row 1 but an extra value under the last row), shift it to line up and add "dimensions" to uncertain for the affected rows.
 - A page counter like "1/3", circled numbers, or a running total in the header are not data. Tick marks and "OK" in the margin are not data.
-- "Same as" notes (e.g. "Rooms 2-3-4-5-6-7 same as Room 1", "Class 2 to 10 same as class 1", or a bracket "Room 2 to 7 same as room no 1") go in copy_notes with the source row numbers and the target room names/tags, copied as written. Do NOT create rows for the targets.
+- "Same as" notes (e.g. "Rooms 2-3-4-5-6-7 same as Room 1", "Class 2 to 10 same as class 1", or a bracket "Room 2 to 7 same as room no 1") go in copy_notes: source_rows is [first_row, last_row] of the source room's block of rows (inclusive; one number if it is a single row), targets lists each target room name/tag as written, text is the note as written. Do NOT create rows for the targets.
 - Extra lines written below row 13 are extra rows. Two value pairs stacked in one cell (e.g. qty "1/1", lamp/fix "2/1") become two separate rows; add the affected fields to uncertain.
 - Small task lights (e.g. "Bed light", "Desk light", "Mirror light") are often written as their own rows with a low height (about 1 m), linked by an arrow to a room. Keep them as separate rows.
 - A note such as "DB control" in the margin beside a row: remarks "DB CONTROL".
@@ -46,7 +46,8 @@ WRITE VALUES IN THESE FORMS:
 - dimensions: as written with "x", e.g. "3x4"; "^" for a ditto in the margin; null if none.
 - remarks: any other note for the row, UPPERCASE, else null.
 
-For every value you are not sure about (hard to read, overwritten, guessed, shifted margin value) put its field name in that row's "uncertain" list and explain briefly in "note".
+NEVER leave a value empty because it is hard to read. If you cannot read a value, give your best ESTIMATE (use the same column in nearby rows, the fixture type, or typical values, e.g. a 2FT T8 fixture is usually 18 W with 2 lamps per fixture), and put its field name in that row's "uncertain" list with a note that starts with "ESTIMATED". Use null only for a cell that is truly empty on the sheet, and 0 never.
+For every other value you are not sure about (overwritten, guessed, shifted margin value) also put its field name in that row's "uncertain" list and explain briefly in "note".
 
 Reply with ONLY this JSON object (no prose, no markdown fences):
 {"header":{"building_name":string|null,"section":string|null,"floor":string|null,"collected_by":string|null,"date":string|null,"page_label":string|null,"upright":true|false},
