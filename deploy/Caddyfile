@@ -1,0 +1,12 @@
+# /etc/caddy/Caddyfile  — Caddy gets and renews the HTTPS certificate automatically.
+licensing.example.com {
+	encode zstd gzip
+	# page images are up to ~12 MB per request
+	request_body { max_size 20MB }
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+	reverse_proxy 127.0.0.1:8443
+}

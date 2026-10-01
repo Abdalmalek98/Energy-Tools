@@ -6,7 +6,7 @@ const api = {
   license: {
     status: () => ipcRenderer.invoke("license:status"),
     activate: (code: string) => ipcRenderer.invoke("license:activate", code),
-    refresh: () => ipcRenderer.invoke("license:refresh"),
+    check: () => ipcRenderer.invoke("license:check"),
     deactivate: () => ipcRenderer.invoke("license:deactivate"),
     onStatus: (cb: (s: unknown) => void) => { const h = (_e: unknown, s: unknown) => cb(s); ipcRenderer.on("license:status", h); return () => { ipcRenderer.removeListener("license:status", h); }; },
   },
@@ -19,6 +19,8 @@ const api = {
     recent: () => ipcRenderer.invoke("project:recent"),
   },
   export: { run: (o: unknown) => ipcRenderer.invoke("export:run", o) },
+  clipboard: { write: (text: string) => ipcRenderer.invoke("clipboard:write", text) },
+  support: { open: () => ipcRenderer.invoke("support:open") },
   reveal: (p: string) => ipcRenderer.invoke("shell:reveal", p),
   updates: { check: () => ipcRenderer.invoke("updates:check") },
 };

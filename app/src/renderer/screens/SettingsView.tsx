@@ -1,27 +1,22 @@
 import { useEffect, useState } from "react";
 import type { SpaceRule } from "@lsr/shared";
-import { daysLeft, type LicStatus } from "../types";
+import { isError, type LicStatus } from "../types";
+import { LicensePanel } from "./LicensePanel";
 import { useProject } from "../store";
 
 export function SettingsView({ status }: { status: LicStatus }) {
   const { spaceRules, setSpaceRules } = useProject();
   const [defaults, setDefaults] = useState<SpaceRule[]>([]);
   const [rules, setRules] = useState<SpaceRule[]>([]);
-  const [msg, setMsg] = useState("");
-  useEffect(() => { void window.api.settings.get().then((s: { spaceRules: SpaceRule[] | null; defaultSpaceRules: SpaceRule[] }) => { setDefaults(s.defaultSpaceRules); setRules(s.spaceRules ?? s.defaultSpaceRules); setSpaceRules(s.spaceRules ?? undefined); }); }, [setSpaceRules]);
-  const save = (r: SpaceRule[] | null) => { void window.api.settings.set({ spaceRules: r }); setSpaceRules(r ?? undefined); };
-  const s = status.state; const info = s.kind === "active" ? s.info : null;
-  const d = info ? daysLeft(info.endsAt, status.now) : null;
+  const [msg, setMsg] = useState(""); const [err, setErr] = useState("");
+  useEffect(() => { void window.api.settings.get().then((s: { spaceRules: SpaceRule[] | null; defaultSpaceRules: SpaceRule[] } | { error: string }) => { if (isError(s)) return setErr(s.error); setDefaults(s.defaultSpaceRules); setRules(s.spaceRules ?? s.defaultSpaceRules); setSpaceRules(s.spaceRules ?? undefined); }); }, [setSpaceRules]);
+  const save = async (r: SpaceRule[] | null) => { const res = await window.api.settings.set({ spaceRules: r }); if (isError(res)) return setErr(`Couldn’t save the settings: ${res.error}`); setErr(""); setSpaceRules(r ?? undefined); };
   return (
     <div className="page">
       <h1>Settings & About</h1>
+      {err && <p className="error" role="alert" data-testid="settings-error">{err}</p>}
+      <LicensePanel status={status} />
       <div className="card" data-testid="about">
-        <h2>Licence</h2>
-        {info ? <p>{info.customer} · {d == null ? "no end date" : `${d} days left`} · {info.quotaMonth == null ? "unlimited pages" : `${info.quotaLeft} pages left this month`}</p> : <p>Not active.</p>}
-        <div className="row">
-          <button data-testid="check-licence" onClick={() => void window.api.license.refresh()}>Check licence now</button>
-          <button className="danger" data-testid="deactivate" onClick={() => { if (confirm("Deactivate this PC? You can activate the code on another PC afterwards.")) void window.api.license.deactivate(); }}>Deactivate this PC</button>
-        </div>
         <h2>About</h2>
         <p>Version {status.version}</p>
         <button onClick={async () => setMsg((await window.api.updates.check()).message)}>Check for updates</button> <span className="muted">{msg}</span>

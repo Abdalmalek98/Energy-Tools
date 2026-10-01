@@ -3,12 +3,12 @@ import { images } from "./images";
 import { emptyProject, type Project } from "./model";
 import { ProjectProvider, useProject } from "./store";
 import { Home } from "./screens/Home";
-import { LockScreen } from "./screens/Lock";
+import { ActivationScreen } from "./screens/Activation";
 import { ProjectView } from "./screens/ProjectView";
 import { Review } from "./screens/Review";
 import { ExportView } from "./screens/Export";
 import { SettingsView } from "./screens/SettingsView";
-import type { LicStatus, View } from "./types";
+import { isError, type LicStatus, type View } from "./types";
 
 function Shell({ status }: { status: LicStatus }) {
   const { dispatch, project } = useProject();
@@ -21,7 +21,7 @@ function Shell({ status }: { status: LicStatus }) {
     setErr("");
     const r = await window.api.project.open(path);
     if (!r) return;
-    if ("error" in r) return setErr(r.error as string);
+    if (isError(r)) return setErr(`Couldn’t open the project: ${r.error}`);
     images.clear();
     for (const [id, buf] of Object.entries(r.images as Record<string, ArrayBuffer>)) images.set(id, new Blob([buf], { type: "image/jpeg" }));
     const p = r.project as Project;
@@ -37,9 +37,10 @@ function Shell({ status }: { status: LicStatus }) {
       <nav className="tabs" aria-label="Main">
         <span className="brand">Lighting Survey Reader</span>
         {tabs.map(([v, label]) => <button key={v} data-testid={`tab-${v}`} className={view === v ? "on" : ""} disabled={(v === "project" || v === "review" || v === "export") && !hasProject} onClick={() => setView(v)}>{label}</button>)}
-        {status.state.kind === "active" && status.state.offline && <span className="chip" title="Working offline until the grace period ends">offline</span>}
+        
       </nav>
-      {err && <p className="error banner" role="alert">{err}</p>}
+      {status.evaluation.warning && <p className="warnbanner" role="status" data-testid="warning-banner">{status.evaluation.warning} <button className="link" onClick={() => setView("settings")}>License details</button></p>}
+      {err && <p className="error banner" role="alert" data-testid="app-error">{err}</p>}
       {view === "home" && <Home status={status} onNew={newProject} onOpen={(p) => void open(p)} />}
       {view === "project" && <ProjectView onReview={() => setView("review")} />}
       {view === "review" && <Review />}
@@ -53,9 +54,9 @@ export default function App() {
   const [status, setStatus] = useState<LicStatus | null>(null);
   useEffect(() => {
     void window.api.license.status().then(setStatus);
-    return window.api.license.onStatus(() => void window.api.license.status().then(setStatus));
+    return window.api.license.onStatus((s) => setStatus(s as LicStatus));
   }, []);
   if (!status) return <main className="lock"><p>Loading…</p></main>;
-  if (status.state.kind !== "active") return <LockScreen status={status} />;   // client-side gate = UX only; service enforces
+  if (!status.evaluation.usable) return <ActivationScreen status={status} />;   // client-side gate = UX only; the server enforces every page read
   return <ProjectProvider initial={emptyProject()}>{() => <Shell status={status} />}</ProjectProvider>;
 }

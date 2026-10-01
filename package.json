@@ -5,10 +5,8 @@
   "workspaces": [
     "shared",
     "licensing",
-    "service",
-    "admin-cli",
-    "app",
-    "server"
+    "server",
+    "app"
   ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",

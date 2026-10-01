@@ -1,0 +1,27 @@
+[Unit]
+Description=Lighting Survey Reader licensing server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=lsr
+Group=lsr
+WorkingDirectory=/opt/lsr
+EnvironmentFile=/etc/lsr/server.env
+ExecStart=/usr/bin/node --no-warnings /opt/lsr/server.mjs
+Restart=always
+RestartSec=3
+# hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/lsr
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

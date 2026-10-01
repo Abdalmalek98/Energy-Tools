@@ -209,7 +209,7 @@ describe("read-page proxy", () => {
 });
 
 describe("start-up", () => {
-  it("refuses to start without TLS unless explicitly behind a proxy", () => {
+  it.skipIf(process.platform === "win32")("refuses to start without TLS unless explicitly behind a proxy", () => {
     const build = spawnSync("npx", ["esbuild", "src/main.ts", "--bundle", "--platform=node", "--format=esm", "--target=node22", "--outfile=dist/test-server.mjs", "--external:node:*", "--log-level=error"], { cwd: path.resolve(__dirname, ".."), encoding: "utf8" });
     expect(build.status).toBe(0);
     const dir = mkdtempSync(path.join(tmpdir(), "srv-")); const keys = path.join(dir, "keys.json"); writeFileSync(keys, JSON.stringify({ license: [licKey.entry] }));

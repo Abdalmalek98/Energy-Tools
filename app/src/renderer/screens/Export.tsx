@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { images } from "../images";
 import { useProject } from "../store";
-import { baseName } from "../types";
+import { baseName, isError } from "../types";
 
 export function ExportView({ savedPath, onSaved }: { savedPath: string | null; onSaved: (p: string) => void }) {
   const { project, resolved, totals } = useProject();
@@ -14,7 +14,7 @@ export function ExportView({ savedPath, onSaved }: { savedPath: string | null; o
     const r = await window.api.export.run({ mode, rows: resolved, name });
     setBusy(false);
     if (!r) return;
-    if ("error" in r) return setMsg({ ok: false, text: r.error });
+    if (isError(r)) return setMsg({ ok: false, text: r.error.startsWith("Couldn") ? r.error : `Couldn’t export: ${r.error}` });
     setMsg({ ok: true, path: r.path, text: mode === "append" ? `Added ${resolved.length} rows after row ${r.appendedAfter} → ${baseName(r.path)}` : `Saved ${resolved.length} rows → ${baseName(r.path)}` });
   };
   const save = async (asNew: boolean) => {
@@ -22,7 +22,7 @@ export function ExportView({ savedPath, onSaved }: { savedPath: string | null; o
     const imgs: Record<string, ArrayBuffer> = {};
     for (const f of project.files) for (const p of f.pages) { const b = images.get(p.id); if (b) imgs[p.id] = await b.arrayBuffer(); }
     const p = await window.api.project.save(project, imgs, asNew ? undefined : savedPath ?? undefined);
-    setBusy(false); if (p) { onSaved(p); setMsg({ ok: true, path: p, text: `Project saved → ${baseName(p)}` }); }
+    setBusy(false); if (isError(p)) return setMsg({ ok: false, text: `Couldn’t save the project: ${p.error}` }); if (p) { onSaved(p); setMsg({ ok: true, path: p, text: `Project saved → ${baseName(p)}` }); }
   };
   return (
     <div className="page">

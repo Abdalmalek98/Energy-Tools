@@ -1,17 +1,15 @@
-# Acceptance checklist — fresh Windows 11 VM
+# Acceptance checklist: fresh Windows 11 VM
 
-Automated tests cover the logic on Linux; these steps confirm it on Windows. Use the installer built by GitHub Actions (or `npm run dist`).
+Automated tests cover the logic on Linux; these steps confirm the Windows-only parts (DPAPI, registry hardware ids, installer, SmartScreen). Use the **release** artifact from GitHub Actions (`windows-release`), not a PREVIEW one.
 
-1. [ ] Install `LightingSurveyReader-Setup-x.y.z.exe` **as a standard user** (no admin prompt). Note the SmartScreen dialog if unsigned.
-2. [ ] Start the app: activation screen shows your contact line.
-3. [ ] Enter a **wrong code** → “not valid”. Enter an **expired** code → “expired”. Enter a code limited to 1 PC that is already on another PC → “already active on 1 PC”.
-4. [ ] Enter a valid code → Home shows customer, days left, pages left.
-5. [ ] Add a **5-page PDF** (try one with Arabic characters in its name) → pages appear upright; ↺ ↻ work.
-6. [ ] **Read pages** → all 5 read; review screen shows highlighted cells; edit a value, dittos follow.
-7. [ ] **Export → New workbook** → opens in **Excel with no repair prompt**; looks like the template; Summary and Review Flags sheets present; *Add to existing workbook* appends after the last row.
-8. [ ] **Save project**, close, reopen the `.lsr`: nothing needs re-reading.
-9. [ ] In the admin page **lock** the code → in the running app press *Read pages* → lock screen appears immediately; otherwise wait ≤ 30 minutes → lock screen. Restart the app offline → still locked.
-10. [ ] **Unlock**, enter the code again → works. **Settings → Deactivate this PC** → activation screen; the slot is free.
-11. [ ] Disconnect the network: app keeps working; reading pages shows a network message, not a crash.
-12. [ ] Check `%APPDATA%\LightingSurveyReader` contains `license.bin` (encrypted) and `settings.json`.
-13. [ ] Publish a newer tag → after launch the installed app downloads it and installs when closed.
+1. [ ] Run **Lighting Survey Reader Setup.exe** as a *standard* user: no administrator prompt. Note the SmartScreen dialog if unsigned (More info → Run anyway). Also try the portable **Lighting Survey Reader.exe**.
+2. [ ] The activation screen shows your contact line, **Contact Support**, and a **Machine ID** (`MID1.…`) with **Copy**.
+3. [ ] Wrong text → "not a valid activation code". A code with one character changed → "damaged or altered". An expired code → "License expired. Please enter a valid activation code." A 1-computer code already active on another PC → "already active on 1 computer".
+4. [ ] Create an **offline code** for this PC (`scripts/offline-license.sh … --machine-id <copied id> --days 365` in Git Bash). **Turn the network off**, paste it → **Activate** works; Settings → License shows id, customer, expiry, days remaining, status, machine.
+5. [ ] Network on: add a **5-page PDF** (try an Arabic file name) → pages upright; **Read pages**; review (highlights, edit, dittos); **Export** opens in Excel with **no repair prompt**; *Add to existing workbook* appends; *Save project* and reopen.
+6. [ ] In the License Manager **suspend/revoke** the licence: pressing **Read pages** locks the app immediately; otherwise **Check License** or ≤ 30 min. Restart with the network off: still locked. **Reinstate**, activate again: works.
+7. [ ] Online licence: activate, disconnect the network for longer than the licence's grace period (set a short one with *Grace period*): warning bar first, then "connect to the internet".
+8. [ ] **Deactivate** (confirm dialog) → activation screen; the slot is free in the Manager.
+9. [ ] `%APPDATA%\LightingSurveyReader` has `license.dat` (binary, DPAPI-encrypted: it must not contain your customer name in clear text) and `settings.json`. Copy `license.dat` to another PC/user: the app there asks for a code.
+10. [ ] Change the PC clock back by a month: an expired licence stays expired.
+11. [ ] Publish a newer tag: the installed app downloads it and installs when closed.

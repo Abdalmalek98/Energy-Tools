@@ -39,3 +39,7 @@ table.grid td.calc{padding:3px 6px;text-align:right;color:var(--mut)}table.grid 
 .totals{display:flex;gap:22px;padding:8px 4px;border-top:1px solid var(--bd);margin-top:8px}
 table.rules{width:100%;border-collapse:collapse}table.rules td{padding:2px}table.rules input{width:100%}
 progress{width:200px}
+.machineid{margin-top:8px}.mid{display:block;max-width:100%;overflow-wrap:anywhere;font:12px ui-monospace,Consolas,monospace;background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:6px 8px;flex:1}
+.lockcard textarea.codefield{font:12px ui-monospace,Consolas,monospace;letter-spacing:0;text-align:left;width:100%;margin-bottom:12px}
+dl.kv{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;margin:8px 0}dl.kv dt{color:var(--mut)}dl.kv dd{margin:0}
+.warnbanner{margin:0;padding:8px 16px;background:var(--flag);border-bottom:1px solid var(--bd)}

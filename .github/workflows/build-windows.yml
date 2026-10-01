@@ -1,0 +1,79 @@
+name: Build Windows installer
+# "Run workflow" only appears for workflows on the DEFAULT branch, so this also runs automatically on every push to the working branch.
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Release build (runs the release gate, no development keys). Needs production keys + LSR_SERVICE_URL."
+        type: boolean
+        default: false
+  push:
+    branches: ["claude/gracious-cray-j6dz3v"]
+    tags: ["v*"]
+
+concurrency: { group: "build-${{ github.ref }}", cancel-in-progress: true }
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      # secrets are mapped to env first: `secrets` must not be used directly in `if:` conditions
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+      LSR_SERVICE_URL: ${{ vars.LSR_SERVICE_URL }}
+      LSR_SUPPORT_URL: ${{ vars.LSR_SUPPORT_URL }}
+      LSR_CONTACT: ${{ vars.LSR_CONTACT }}
+      LSR_DEVICE_SALT: ${{ vars.LSR_DEVICE_SALT }}
+      IS_RELEASE: ${{ (github.ref_type == 'tag' || inputs.release == true) && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests that are meaningful on Windows
+        # Skipped here (they need bash/OpenSSL/LibreOffice/xvfb and run on Linux CI): offline-license.sh tests, LibreOffice recalculation, the Electron E2E suite.
+        shell: bash
+        run: |
+          npm test -w licensing
+          npm test -w shared
+          npm test -w server
+          npm test -w app
+      - name: Default service URL for preview builds
+        if: env.IS_RELEASE != 'true' && env.LSR_SERVICE_URL == ''
+        shell: bash
+        run: echo "LSR_SERVICE_URL=https://licensing.invalid" >> "$GITHUB_ENV"
+      - name: Build (release gate + production keys only)
+        if: env.IS_RELEASE == 'true'
+        shell: bash
+        run: npm run dist -w app -- --publish never
+      - name: Build (PREVIEW: includes the development keyring, never ship it)
+        if: env.IS_RELEASE != 'true'
+        shell: bash
+        run: npm run dist:preview -w app -- --publish never
+      - name: Name the files for download
+        shell: bash
+        run: |
+          mkdir -p out-files
+          cp app/release/LightingSurveyReader-Setup-*.exe "out-files/Lighting Survey Reader Setup.exe"
+          cp app/release/LightingSurveyReader-*-portable.exe "out-files/Lighting Survey Reader.exe"
+          cp app/release/latest.yml out-files/ 2>/dev/null || true
+          ls -la out-files
+      - name: Sign (only when a certificate is configured)
+        if: env.CSC_LINK != ''
+        shell: bash
+        run: echo "electron-builder signed the build with the configured certificate (CSC_LINK)."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.IS_RELEASE == 'true' && 'windows-release' || 'windows-PREVIEW-not-for-customers' }}
+          path: out-files/*
+          if-no-files-found: error
+      - name: Publish to the releases repo (tags only)
+        if: github.ref_type == 'tag' && env.RELEASES_TOKEN != ''
+        shell: bash
+        working-directory: app
+        run: npx electron-builder --win nsis portable --x64 --publish always
+        env: { GH_TOKEN: "${{ env.RELEASES_TOKEN }}" }

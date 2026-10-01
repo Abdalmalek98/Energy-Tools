@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
-import { baseName, daysLeft, type LicStatus } from "../types";
+import { baseName, fmtDay, isError, type LicStatus } from "../types";
 
 export function Home({ status, onNew, onOpen }: { status: LicStatus; onNew: () => void; onOpen: (path?: string) => void }) {
   const [recent, setRecent] = useState<string[]>([]);
-  useEffect(() => { void window.api.project.recent().then(setRecent); }, []);
-  const s = status.state; const info = s.kind === "active" ? s.info : null;
-  const d = info ? daysLeft(info.endsAt, status.now) : null;
+  useEffect(() => { void window.api.project.recent().then((r: string[] | { error: string }) => { if (!isError(r)) setRecent(r); }); }, []);
+  const info = status.evaluation.info;
   return (
     <div className="page">
       <h1>Lighting Survey Reader</h1>
@@ -13,9 +12,9 @@ export function Home({ status, onNew, onOpen }: { status: LicStatus; onNew: () =
         <div className="card grow" data-testid="licence-card">
           <h2>Licence</h2>
           {info && <>
-            <p><b>{info.customer}</b></p>
-            <p>{d == null ? "No end date" : `${d} day${d === 1 ? "" : "s"} left`}{s.kind === "active" && s.offline ? " · offline" : ""}</p>
-            <p>{info.quotaMonth == null ? "Unlimited pages" : `${info.quotaLeft ?? 0} of ${info.quotaMonth} pages left this month`}</p>
+            <p><b dir="auto">{info.customer}</b>{info.company ? <span dir="auto"> · {info.company}</span> : null}</p>
+            <p>{info.daysRemaining == null ? "No end date" : `${info.daysRemaining} day${info.daysRemaining === 1 ? "" : "s"} left`} · expires {fmtDay(info.expiresAt)}</p>
+            <p className="muted small">{info.offline ? "Offline licence" : "Online licence"} · ID {info.licenseId}</p>
           </>}
         </div>
         <div className="card grow">

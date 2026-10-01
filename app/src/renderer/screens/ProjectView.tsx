@@ -4,6 +4,7 @@ import { images } from "../images";
 import { cleanName, nid, type FileState, type PageState, type Rotation } from "../model";
 import { readPages, stopReading } from "../reader";
 import { useProject } from "../store";
+import { isError } from "../types";
 
 const blankPage = (n: number, rotation: Rotation): PageState => ({ id: nid("p"), n, rotation, status: "new", header: {}, section_changes: [], copy_notes: [], rows: [] });
 
@@ -47,7 +48,11 @@ export function ProjectView({ onReview }: { onReview: () => void }) {
     dispatch({ t: "patchFile", id: file.id, patch: { loading: false } });
   }, [dispatch]);
 
-  const pick = async () => { for (const f of await window.api.files.pick()) await addBytes(f.name, f.data, ""); };
+  const pick = async () => {
+    const r = await window.api.files.pick();
+    if (isError(r)) return setNote(`Couldn’t open the selected files: ${r.error}`);
+    for (const f of r) await addBytes(f.name, f.data, "");
+  };
   const drop = async (e: React.DragEvent) => {
     e.preventDefault(); setDrag(false);
     for (const f of Array.from(e.dataTransfer.files)) if (/\.(pdf|jpe?g|png)$/i.test(f.name)) await addBytes(f.name, await f.arrayBuffer(), f.type);
@@ -93,7 +98,7 @@ export function ProjectView({ onReview }: { onReview: () => void }) {
         <span className="grow" />
         {anyDone && <button data-testid="go-review" onClick={onReview}>Review results →</button>}
       </div>
-      {note && <p className="muted" role="status">{note}</p>}
+      {note && <p className={/Couldn|failed|stopped/i.test(note) ? "error" : "muted"} role="status" data-testid="project-note">{note}</p>}
       <p className="muted small">Rows {totals.rows} · Cells to check {totals.flaggedCells} · Fixtures {totals.fixtures} · {totals.kw} kW</p>
     </div>
   );

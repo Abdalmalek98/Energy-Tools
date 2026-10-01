@@ -12,3 +12,15 @@ app/e2e/.keys.json
 service/.dev.vars
 release/
 app/release/
+# secrets and keys: never commit
+*.pem
+*.key
+private-keys/
+.env
+.env.*
+!.env.example
+server/data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.local-licence/

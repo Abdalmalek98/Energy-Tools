@@ -9,7 +9,7 @@ import { compareSheets, reportMarkdown, sheetRow, type SampleResult, type SheetR
 
 const ROOT = path.resolve(__dirname, "../..");
 const REF = path.join(ROOT, "reference");
-const cfg = JSON.parse(readFileSync(path.join(ROOT, ".local-licence.json"), "utf8")) as { code: string };
+const cfg = JSON.parse(readFileSync(path.join(ROOT, ".local-licence/config.json"), "utf8")) as { code: string };
 const SAMPLES = [
   { id: "fatiha", pages: 3, name: "Al-Fatiha Center", pdf: "Al-Fatiha_Center_-_________________.pdf", rows: [3, 41] },
   { id: "darb", pages: 3, name: "Darb Vaccination Centre", pdf: "Darb_Vccination_Centre_-_________________________________.pdf", rows: [167, 203] },

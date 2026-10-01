@@ -12,7 +12,8 @@
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit",
     "e2e": "node e2e/prepare.mjs && xvfb-run -a playwright test",
-    "dist": "node scripts/release-check.mjs && electron-vite build && node scripts/release-check.mjs --post && electron-builder --win nsis zip --x64"
+    "dist": "node scripts/dist.mjs",
+    "dist:preview": "node scripts/dist.mjs --preview"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
@@ -20,6 +21,7 @@
     "jszip": "^3.10.1"
   },
   "devDependencies": {
+    "@lsr/licensing": "*",
     "@lsr/shared": "*",
     "@playwright/test": "^1.49.0",
     "@types/node": "^22.0.0",

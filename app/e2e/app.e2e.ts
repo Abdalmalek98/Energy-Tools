@@ -1,13 +1,12 @@
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import ExcelJS from "exceljs";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { startMock, type Mock } from "./mockService";
+import { RealServer, startUpstream } from "./realServer";
 
 const APP = path.resolve(__dirname, "..");
 const REF = path.resolve(APP, "../reference");
-const GOOD = "AAAAA-AAAAA-AAAAA-AAAAA";
 const tmp = () => mkdtempSync(path.join(tmpdir(), "lsr-e2e-"));
 const SHOTS = process.env.LSR_SHOTS;                       // optional: save screenshots for the user guide
 const shot = async (p: Page, name: string) => { if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await p.screenshot({ path: path.join(SHOTS, name + ".png") }); } };
@@ -47,44 +46,66 @@ async function launch(userData: string, env: Record<string, string> = {}): Promi
 }
 const activate = async (page: Page, code: string) => { await page.getByTestId("code-input").fill(code); await page.getByTestId("activate").click(); };
 
-let mock: Mock;
-test.beforeAll(async () => { mock = await startMock(await modelPages()); });
-test.afterAll(async () => { await mock.close(); });
-test.beforeEach(() => { mock.state.locked.clear(); mock.state.readCalls.length = 0; mock.state.failNext = null; });
+let srv: RealServer; let upstream: Awaited<ReturnType<typeof startUpstream>>;
+test.beforeAll(async () => { upstream = await startUpstream(await modelPages()); srv = new RealServer(); await srv.start(); });
+test.afterAll(async () => { await srv.stop(); await upstream.close(); });
+test.beforeEach(() => { upstream.calls.length = 0; });
 
-test("activation: wrong, locked, expired and 'third PC' codes show clear messages; a good code opens the app", async () => {
+test("activation: bad, tampered, expired and 'second PC' codes show clear messages; a good code opens the app and the licence page shows every detail", async () => {
+  const good = await srv.create({ customer: "Jane Doe", company: "Acme Energy", days: 30 });
   const { app, page } = await launch(tmp());
   await expect(page.getByTestId("lock-screen")).toBeVisible();
   await expect(page.getByText("Contact: test@example.com")).toBeVisible();
+  await expect(page.getByTestId("contact-support")).toBeVisible();
+  await expect(page.getByTestId("machine-id")).toHaveText(/^MID1\./);
   await shot(page, "01-activation");
-  await activate(page, "ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ");  await expect(page.getByTestId("activate-error")).toContainText("not valid");
-  await activate(page, "DDDDD-DDDDD-DDDDD-DDDDD");   await expect(page.getByTestId("activate-error")).toContainText("already active on 1 PC");
-  await activate(page, "CCCCC-CCCCC-CCCCC-CCCCC");   await expect(page.getByTestId("activate-error")).toContainText("expired");
-  await activate(page, "BBBBB-BBBBB-BBBBB-BBBBB");   await expect(page.getByTestId("activate-error")).toContainText("locked");
-  await page.getByTestId("code-input").fill("aaaaa aaaaa aaaaa aaaaa");                               // typing is auto-formatted
-  await expect(page.getByTestId("code-input")).toHaveValue(GOOD);
-  await page.getByTestId("activate").click();
-  await expect(page.getByTestId("licence-card")).toContainText("Acme Test");
+  await activate(page, "hello");                                         await expect(page.getByTestId("activate-error")).toContainText("not a valid activation code");
+  await activate(page, good.code.slice(0, -4) + "AAAA");                 await expect(page.getByTestId("activate-error")).toContainText("damaged or has been altered");
+  const expired = await srv.create({ expiresAt: new Date(Date.now() - 1000).toISOString() });
+  await activate(page, expired.code);                                    await expect(page.getByTestId("activate-error")).toContainText("License expired. Please enter a valid activation code.");
+  // a second computer (different hardware ids) cannot use a 1-computer code that is already active elsewhere
+  await activate(page, good.code);
+  await expect(page.getByTestId("licence-card")).toContainText("Jane Doe");
+  await expect(page.getByTestId("licence-card")).toContainText("Acme Energy");
   await expect(page.getByTestId("licence-card")).toContainText("30 days left");
-  await expect(page.getByTestId("licence-card")).toContainText("pages left this month");
   await shot(page, "02-home");
+  const second = await launch(tmp(), { LSR_TEST_MACHINE_SEED: "another-pc" });
+  await activate(second.page, good.code);
+  await expect(second.page.getByTestId("activate-error")).toContainText("already active on 1 computer");
+  await second.app.close();
+  // licence page
+  await page.getByTestId("tab-settings").click();
+  await expect(page.getByTestId("lic-id")).toHaveText(good.licenseId);
+  await expect(page.getByTestId("lic-days")).toHaveText("30");
+  await expect(page.getByTestId("lic-status")).toHaveText("Active");
+  await expect(page.getByTestId("licence-panel")).toContainText("Last validation");
+  await shot(page, "07-licence");
+  await app.close();
+});
+
+test("Machine ID can be copied", async () => {
+  const { app, page } = await launch(tmp());
+  await app.evaluate(({ clipboard }) => clipboard.clear());
+  await page.getByTestId("copy-machine-id").click();
+  await expect(page.getByTestId("copy-machine-id")).toHaveText("Copied");
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toMatch(/^MID1\./);
   await app.close();
 });
 
 test("full flow: import PDF (Arabic file name) → auto-rotate → read → review/edit → export → save → reopen", async () => {
+  const code = (await srv.create({ days: 60 })).code;
   const data = tmp(), out = tmp();
   const pdf = path.join(tmp(), "مركز الفاتحة.pdf");
   copyFileSync(path.join(REF, "samples", "Al-Fatiha_Center_-_________________.pdf"), pdf);
   const lsr = path.join(out, "مركز الفاتحة.lsr");
   let { app, page } = await launch(data, { LSR_E2E_OPEN: JSON.stringify([pdf]), LSR_E2E_OUT: out });
-  await activate(page, GOOD);
+  await activate(page, code);
   await page.getByTestId("new-project").click();
   await page.getByTestId("add-files").click();
   await expect(page.locator('[data-testid^="page-"]')).toHaveCount(3);
   await expect(page.getByTestId("building")).toHaveValue("مركز الفاتحة");
   // portrait photo of a landscape form is turned upright automatically: thumbnails must be landscape
   await expect.poll(() => page.evaluate(() => { const i = document.querySelector<HTMLImageElement>(".thumbimg img"); return i ? i.naturalWidth > i.naturalHeight : null; })).toBe(true);
-  // manual rotate flips it
   await page.getByLabel("Rotate right").first().click();
   await expect.poll(() => page.evaluate(() => { const i = document.querySelector<HTMLImageElement>(".thumbimg img"); return i ? i.naturalWidth < i.naturalHeight : null; })).toBe(true);
   await page.getByLabel("Rotate left").first().click();
@@ -94,23 +115,20 @@ test("full flow: import PDF (Arabic file name) → auto-rotate → read → revi
 
   await page.getByTestId("read-pages").click();
   await expect(page.getByTestId("page-done")).toHaveCount(3);
-  // each page = whole page + top 56 % + bottom 56 %, real JPEGs under 4 MB, quality forwarded, hint forwarded
-  expect(mock.state.readCalls).toHaveLength(3);
-  for (const c of mock.state.readCalls) { expect(c.images).toBe(3); expect(c.magic.every(Boolean)).toBe(true); expect(Math.max(...c.sizes)).toBeLessThan(4 * 1024 * 1024); expect(c.quality).toBe("best"); expect(c.hint).toBe("Health centre, Arabic names"); }
+  // the page images went through OUR server to the (stub) model with the server-side key; 3 images per page
+  expect(upstream.calls).toHaveLength(3);
+  for (const c of upstream.calls) { expect(c.images).toBe(3); expect(c.key).toBe("sk-e2e"); expect(c.model).toBe("claude-opus-5-5"); }
 
   await page.getByTestId("go-review").click();
   await expect(page.getByTestId("grid-row")).toHaveCount(13);
   await expect(page.getByTestId("scan").locator("img")).toBeVisible();
   await expect(page.getByTestId("hdr-date")).toHaveValue("10-2-26");
   await shot(page, "04-review");
-  // flagged cells are highlighted: model-uncertain (page 1) …
   await expect(page.locator("td.flag").first()).toBeVisible();
   await expect(page.getByTestId("flag-count")).not.toHaveText(/^0 /);
-  // filter to rows with flags
   await page.getByTestId("flag-only").check();
   const flaggedRows = await page.getByTestId("grid-row").count(); expect(flaggedRows).toBeGreaterThan(0); expect(flaggedRows).toBeLessThan(13);
   await page.getByTestId("flag-only").uncheck();
-  // change a value and every ditto below follows
   const unit = page.getByTestId("cell-unit_desc");
   await unit.first().fill("HIGH BAY"); await unit.first().press("Enter");
   await expect(unit.first()).toHaveValue("HIGH BAY");
@@ -118,10 +136,8 @@ test("full flow: import PDF (Arabic file name) → auto-rotate → read → revi
   const vals = await unit.evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
   let followed = 0; for (let i = 1; i < vals.length && cls[i]; i++) { expect(vals[i]).toBe("HIGH BAY"); followed++; }
   expect(followed).toBeGreaterThan(0);
-  // keyboard: Alt+→ moves to the next page
   await page.keyboard.press("Alt+ArrowRight");
   await expect(page.getByTestId("page-title")).toContainText("page 2 of 3");
-  // unreadable watts (0 + uncertain) were estimated from the same fixture type and highlighted
   const est = page.locator('[data-testid="grid-row"]').nth(2).locator("td.flag").filter({ has: page.locator('input[data-col="lamp_watt"]') });
   await expect(est).toHaveAttribute("title", /^Estimated/);
   await expect(est.locator("input")).not.toHaveValue("0");
@@ -137,12 +153,11 @@ test("full flow: import PDF (Arabic file name) → auto-rotate → read → revi
   expect(ws.actualRowCount).toBe(41); expect(ws.getCell("Q2").value).toBe("Lamp Load (W)");
   expect(ws.getCell("E3").value).toBe("مركز الفاتحة"); expect(ws.getCell("L3").value).toBe("HIGH BAY");
   expect(wb.getWorksheet("Summary")).toBeTruthy(); expect(wb.getWorksheet("Review Flags")!.rowCount).toBeGreaterThan(1);
-
   await app.close();
 
-  // save the project, then reopen it in a new session
+  // save the project, then reopen it in a new session (licence persisted: no re-activation)
   ({ app, page } = await launch(data, { LSR_E2E_OPEN: JSON.stringify([pdf]), LSR_E2E_OUT: out }));
-  await expect(page.getByTestId("licence-card")).toBeVisible();      // licence persisted (encrypted store): no re-activation
+  await expect(page.getByTestId("licence-card")).toBeVisible();
   await page.getByTestId("new-project").click(); await page.getByTestId("add-files").click();
   await expect(page.locator('[data-testid^="page-"]')).toHaveCount(3);
   await page.getByLabel("Project name").fill("مركز الفاتحة");
@@ -152,13 +167,13 @@ test("full flow: import PDF (Arabic file name) → auto-rotate → read → revi
   expect(statSync(lsr).size).toBeGreaterThan(50_000);
   await shot(page, "05-export");
   await app.close();
-  const calls = mock.state.readCalls.length;
+  const calls = upstream.calls.length;
   ({ app, page } = await launch(data, { LSR_E2E_OPEN: JSON.stringify([lsr]), LSR_E2E_OUT: out }));
   await page.getByTestId("open-project").click();
   await page.getByTestId("tab-review").click();
   await expect(page.getByTestId("grid-row")).toHaveCount(13);
   await expect(page.getByTestId("totals")).toContainText("Rows 39");
-  expect(mock.state.readCalls.length).toBe(calls);                    // nothing was re-read
+  expect(upstream.calls.length).toBe(calls);                          // nothing was re-read
   await app.close();
 });
 
@@ -167,60 +182,108 @@ test("append to an existing master workbook continues after the last filled row"
   const pdf = path.join(tmp(), "a.pdf"); copyFileSync(path.join(REF, "samples", "Al-Fatiha_Center_-_________________.pdf"), pdf);
   const master = path.join(out, "master.xlsx"); copyFileSync(path.join(REF, "MOH-JZ - Lightings - Raeds team.xlsx"), master);
   const { app, page } = await launch(data, { LSR_E2E_OPEN: JSON.stringify([pdf, master]), LSR_E2E_OUT: out });
-  await activate(page, GOOD);
+  await activate(page, (await srv.create()).code);
   await page.getByTestId("new-project").click(); await page.getByTestId("add-files").click();
   await expect(page.locator('[data-testid^="page-"]')).toHaveCount(3);
   await page.getByTestId("read-pages").click(); await expect(page.getByTestId("page-done")).toHaveCount(3);
   await page.getByTestId("tab-export").click();
-  await page.getByTestId("export-append").click();                    // 2nd scripted dialog = the master workbook
+  await page.getByTestId("export-append").click();
   await expect(page.getByTestId("export-msg")).toContainText("Added 39 rows after row 554");
-  const updated = path.join(out, "master (updated).xlsx");
-  const wb = new ExcelJS.Workbook(); await wb.xlsx.readFile(updated);
+  const wb = new ExcelJS.Workbook(); await wb.xlsx.readFile(path.join(out, "master (updated).xlsx"));
   const ws = wb.getWorksheet("Lighting Survey Template")!;
-  expect(ws.getCell("E554").value).toBe("AL EADABI VACCINATION CENTER");          // old rows untouched
-  expect(ws.getCell("A555").value).toBe(553); expect(ws.getCell("L555").value).toBeTruthy();   // continues numbering
-  expect(ws.getCell("E555").value).toBe("A"); expect(ws.getCell("E593").value).toBe("A"); expect(ws.getCell("E594").value).toBeNull();   // 39 rows, no more
-  expect(wb.getWorksheet("Summary")).toBeTruthy();
-  const orig = new ExcelJS.Workbook(); await orig.xlsx.readFile(master);           // the original file is not modified
+  expect(ws.getCell("E554").value).toBe("AL EADABI VACCINATION CENTER");
+  expect(ws.getCell("A555").value).toBe(553); expect(ws.getCell("E555").value).toBe("A"); expect(ws.getCell("E593").value).toBe("A"); expect(ws.getCell("E594").value).toBeNull();
+  const orig = new ExcelJS.Workbook(); await orig.xlsx.readFile(master);
   expect(orig.getWorksheet("Lighting Survey Template")!.getCell("E555").value).toBeNull();
   await app.close();
 });
 
-test("locking a code takes effect immediately on the next page read, and on licence check; stays locked after restart", async () => {
+test("revoking a licence locks the running app on the very next page read, and it stays locked after a restart even offline", async () => {
+  const lic = await srv.create();
   const data = tmp();
   const pdf = path.join(tmp(), "b.pdf"); copyFileSync(path.join(REF, "samples", "Darb_Vccination_Centre_-_________________________________.pdf"), pdf);
   let { app, page } = await launch(data, { LSR_E2E_OPEN: JSON.stringify([pdf]) });
-  await activate(page, GOOD);
+  await activate(page, lic.code);
   await page.getByTestId("new-project").click(); await page.getByTestId("add-files").click();
   await expect(page.locator('[data-testid^="page-"]')).toHaveCount(3);
-  mock.state.locked.add("AAAAAAAAAAAAAAAAAAAA");                      // admin locks the code in the admin page
-  await page.getByTestId("read-pages").click();                       // → the very next read is refused and the app locks
+  await srv.admin(`/licenses/${lic.licenseId}/revoke`, { reason: "chargeback" });
+  await page.getByTestId("read-pages").click();
   await expect(page.getByTestId("lock-screen")).toBeVisible();
-  await expect(page.getByTestId("lock-reason")).toContainText("locked");
+  await expect(page.getByTestId("lock-reason")).toContainText("chargeback");
   await shot(page, "06-locked");
   await expect(page.getByTestId("code-input")).toBeVisible();          // field for a new code
   await app.close();
-  // offline restart: still locked (service isn't even asked to agree)
-  const closed = mock; await closed.close();
+  await srv.stop();                                                    // offline restart: still locked
   ({ app, page } = await launch(data));
   await expect(page.getByTestId("lock-screen")).toBeVisible();
+  await expect(page.getByTestId("lock-reason")).toContainText("chargeback");
   await app.close();
-  mock = await startMock(await modelPages());
+  await srv.start();
 });
 
-test("licence check while the app is open: lock is applied without reading a page; unlock + re-activate restores", async () => {
+test("licence check while the app is open: suspend locks without reading a page; reinstate + check restores; deactivate (confirmed) frees the activation", async () => {
+  const lic = await srv.create();
   const { app, page } = await launch(tmp());
-  await activate(page, GOOD);
+  await activate(page, lic.code);
   await page.getByTestId("tab-settings").click();
-  mock.state.locked.add("AAAAAAAAAAAAAAAAAAAA");
+  await srv.admin(`/licenses/${lic.licenseId}/suspend`, { reason: "payment overdue" });
   await page.getByTestId("check-licence").click();
   await expect(page.getByTestId("lock-screen")).toBeVisible();
-  mock.state.locked.clear();
-  await activate(page, GOOD);
+  await expect(page.getByTestId("lock-reason")).toContainText("payment overdue");
+  await srv.admin(`/licenses/${lic.licenseId}/reinstate`, {});
+  await activate(page, lic.code);                                      // entering the same code again re-activates this computer
   await expect(page.getByTestId("licence-card")).toBeVisible();
-  // deactivate frees the slot and returns to the activation screen
-  await page.getByTestId("tab-settings").click(); page.once("dialog", (d) => void d.accept());
+  await page.getByTestId("tab-settings").click(); page.once("dialog", (d) => { expect(d.message()).toContain("Deactivate this PC"); void d.accept(); });
   await page.getByTestId("deactivate").click();
   await expect(page.getByTestId("lock-screen")).toBeVisible();
+  const d = await srv.admin(`/licenses/${lic.licenseId}`);
+  expect(d.json.activations.every((a: any) => a.active === 0)).toBe(true);
+  await app.close();
+});
+
+test("validation overdue shows the warning banner (short grace period set by the server)", async () => {
+  const lic = await srv.create();
+  const { app, page } = await launch(tmp());
+  await activate(page, lic.code);
+  await srv.admin(`/licenses/${lic.licenseId}/set-grace`, { hours: 6 });
+  await page.getByTestId("tab-settings").click(); await page.getByTestId("check-licence").click();
+  await expect(page.getByTestId("warning-banner")).toContainText("validation is overdue");
+  await expect(page.getByTestId("lic-status")).toHaveText("Active (validation overdue)");
+  await app.close();
+});
+
+test("offline licence: activates with NO server contact, then reads pages after registering with the server", async () => {
+  const data = tmp();
+  const pdf = path.join(tmp(), "c.pdf"); copyFileSync(path.join(REF, "samples", "Al-Fatiha_Center_-_________________.pdf"), pdf);
+  let { app, page } = await launch(data, { LSR_E2E_OPEN: JSON.stringify([pdf]) });
+  const mid = (await page.getByTestId("machine-id").innerText()).trim();
+  const lic = await srv.create({ offline: true, machineId: mid, days: 90 });                   // owner signs a code for this exact computer
+  await srv.stop();                                                                              // the server is gone: activation must work without it
+  await activate(page, lic.code);
+  await expect(page.getByTestId("licence-card")).toBeVisible();
+  await page.getByTestId("tab-settings").click();
+  await expect(page.getByTestId("licence-panel")).toContainText("Offline licence");
+  await page.getByTestId("tab-home").click();
+  await srv.start();
+  expect((await srv.admin(`/licenses/${lic.licenseId}`)).json.activations).toHaveLength(0);   // the server never heard from this PC yet
+  await page.getByTestId("new-project").click(); await page.getByTestId("add-files").click();
+  await expect(page.locator('[data-testid^="page-"]')).toHaveCount(3);
+  await page.getByTestId("read-pages").click(); await expect(page.getByTestId("page-done")).toHaveCount(3);
+  expect((await srv.admin(`/licenses/${lic.licenseId}`)).json.activations).toHaveLength(1);    // registered on first read
+  // a code made for another computer is refused locally
+  await app.close();
+  const other = await launch(tmp(), { LSR_TEST_MACHINE_SEED: "other-pc" });
+  await activate(other.page, lic.code);
+  await expect(other.page.getByTestId("activate-error")).toContainText("different computer");
+  await other.app.close();
+  void page; void app; ({ app, page } = { app, page });
+});
+
+test("errors from file dialogs and disk are shown to the user, not swallowed", async () => {
+  const lic = await srv.create();
+  const { app, page } = await launch(tmp(), { LSR_E2E_OPEN: JSON.stringify([path.join(tmp(), "does-not-exist.pdf")]) });
+  await activate(page, lic.code);
+  await page.getByTestId("new-project").click(); await page.getByTestId("add-files").click();
+  await expect(page.getByTestId("project-note")).toContainText("Couldn’t open the selected files");
   await app.close();
 });

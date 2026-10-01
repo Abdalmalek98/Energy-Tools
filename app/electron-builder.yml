@@ -2,7 +2,8 @@ appId: com.lightingsurveyreader.app
 productName: Lighting Survey Reader
 copyright: Copyright © Lighting Survey Reader
 asar: true
-artifactName: LightingSurveyReader-${version}-portable.${ext}   # the zip target; the installer overrides it below
+artifactName: LightingSurveyReader-${version}-portable.${ext}   # the portable exe; the installer overrides it below
+# CI copies the two files to "Lighting Survey Reader Setup.exe" and "Lighting Survey Reader.exe" for download; file names without spaces keep auto-update's latest.yml valid
 directories: { output: release, buildResources: build }
 files:
   - out/**
@@ -12,7 +13,7 @@ extraResources:
 win:
   target:
     - { target: nsis, arch: [x64] }
-    - { target: zip, arch: [x64] }
+    - { target: portable, arch: [x64] }
   icon: build/icon.ico
   # Authenticode: set CSC_LINK (path/base64 of your .pfx) and CSC_KEY_PASSWORD in the environment and the build signs automatically.
   # Without them the build is unsigned (Windows SmartScreen will warn — see docs/USER_GUIDE.md).
