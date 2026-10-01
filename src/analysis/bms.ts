@@ -35,6 +35,46 @@ export function autoMap(headers: string[]): ColumnMapping {
   return map;
 }
 
+/**
+ * Header-based auto-map plus a data-based step for generic temperature probes ("RTD1", "RTD2", "Temperature (C)"):
+ * when LCHWT and ECHWT were not recognised and two probe columns remain, the colder one is the leaving (supply)
+ * temperature and the warmer one the entering (return) temperature.
+ */
+export function autoMapTable(table: RawTable): ColumnMapping {
+  const m = autoMap(table.headers);
+  const used = new Set(Object.values(m).filter((v): v is number => v !== undefined));
+  if (m.lchwt === undefined && m.echwt === undefined) {
+    const mean = (i: number) => {
+      const v = table.rows.map((r) => parseNumber(r[i])).filter(Number.isFinite);
+      return v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN;
+    };
+    const probes = table.headers
+      .map((h, i) => ({ h, i }))
+      .filter(({ h, i }) => !used.has(i) && /rtd|temp|\((°?c|°?f)\)/i.test(h) && Number.isFinite(mean(i)))
+      .map(({ i }) => ({ i, m: mean(i) }));
+    if (probes.length >= 2) {
+      probes.sort((a, b) => a.m - b.m);
+      m.lchwt = probes[0].i;
+      m.echwt = probes[1].i;
+    }
+  }
+  return m;
+}
+
+/** Units stated in the column headers, e.g. "Flow (US GPM)", "RTD1 Temperature (C)". */
+export function detectUnitSettings(table: RawTable, m: ColumnMapping): Partial<Settings> {
+  const out: Partial<Settings> = {};
+  const h = (i?: number) => (i === undefined ? '' : table.headers[i] ?? '');
+  const f = h(m.flow);
+  if (/gpm/i.test(f)) out.flowUnit = 'gpm';
+  else if (/m3\/h|m³\/h|m3h/i.test(f)) out.flowUnit = 'm3/h';
+  else if (/l\/s|lps/i.test(f)) out.flowUnit = 'L/s';
+  const t = `${h(m.lchwt)} ${h(m.echwt)}`;
+  if (/\((°\s*)?f\)|°f|deg\s*f/i.test(t)) out.tempUnit = 'F';
+  else if (/\((°\s*)?c\)|°c|deg\s*c/i.test(t)) out.tempUnit = 'C';
+  return out;
+}
+
 export class MappingError extends Error {
   constructor(message: string, public detectedColumns: string[]) {
     super(message);
@@ -68,7 +108,22 @@ export function parseBms(table: RawTable, mapping: ColumnMapping, s: Settings, o
     throw new MappingError('Cooling load is set to a load column but no column is mapped.', table.headers);
   }
 
-  const tsCol = table.rows.map((r) => cell(r, mapping.timestamp) ?? '');
+  let tsCol = table.rows.map((r) => cell(r, mapping.timestamp) ?? '');
+  // Some data loggers write the time into a different column for most rows (first column blank, real time in a
+  // trailing unnamed column). Fill blanks from any other column that holds readable timestamps.
+  if (tsCol.filter((v) => v.trim() === '').length > table.rows.length * 0.02) {
+    const alts = table.headers
+      .map((_, i) => i)
+      .filter((i) => i !== mapping.timestamp)
+      .filter((i) => {
+        const vals = table.rows.map((r) => r[i] ?? '').filter((v) => v.trim() !== '');
+        return vals.length > table.rows.length * 0.5 && vals.length > 0 && /\d[/\-.]\d|\d:\d/.test(vals[0]) && parseTimestamps(vals.slice(0, 50)).badCount === 0;
+      });
+    if (alts.length) {
+      tsCol = tsCol.map((v, r) => (v.trim() !== '' ? v : table.rows[r][alts[0]] ?? ''));
+      warnings.push(`Timestamp column "${table.headers[mapping.timestamp]}" is blank for many rows – the missing times were taken from column ${alts[0] + 1}${table.headers[alts[0]] ? ` ("${table.headers[alts[0]]}")` : ' (unnamed)'}.`);
+    }
+  }
   const tsParse = parseTimestamps(tsCol);
   const ts = tsParse.values;
   const interval = detectIntervalMinutes(ts);

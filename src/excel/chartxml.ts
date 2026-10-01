@@ -104,8 +104,11 @@ export async function attachCharts(xlsx: Uint8Array, sheetIndex: number, charts:
   else sheetXml = sheetXml.replace('</worksheet>', tag + '</worksheet>');
   // print setup: landscape, fit all charts to one page width
   if (!/<sheetPr/.test(sheetXml)) sheetXml = sheetXml.replace(/(<worksheet[^>]*>)/, '$1<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>');
+  // Schema order (CT_Worksheet): … pageMargins, pageSetup, … ignoredErrors, … drawing, legacyDrawing, tableParts.
+  // Excel rejects out-of-order elements (LibreOffice does not), so place pageSetup explicitly.
   const setup = '<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>';
   if (/<pageMargins[^>]*\/>/.test(sheetXml)) sheetXml = sheetXml.replace(/(<pageMargins[^>]*\/>)/, '$1' + setup);
+  else if (sheetXml.includes('<ignoredErrors')) sheetXml = sheetXml.replace('<ignoredErrors', setup + '<ignoredErrors');
   else sheetXml = sheetXml.replace('<drawing ', setup + '<drawing ');
   zip.file(sheetPath, sheetXml);
   const relPath = `xl/worksheets/_rels/sheet${sheetIndex + 1}.xml.rels`;

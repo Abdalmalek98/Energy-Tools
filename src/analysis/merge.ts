@@ -11,7 +11,8 @@ const lower = (s: string) => s.toLowerCase();
 export function suggestChiller(logger: LoggerData, bmsChillers: string[]): string {
   const hit = bmsChillers.find((c) => lower(c) === lower(logger.chiller)) ??
     bmsChillers.find((c) => lower(c).includes(lower(logger.chiller)) || lower(logger.chiller).includes(lower(c)));
-  return hit ?? logger.chiller;
+  // a single-meter BMS file has only one chiller: a lone logger belongs to it whatever it is called
+  return hit ?? (bmsChillers.length === 1 ? bmsChillers[0] : logger.chiller);
 }
 
 /** First index in sorted `a` with a[i] >= v. */

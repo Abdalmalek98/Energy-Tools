@@ -27,7 +27,17 @@ describe('Excel export', () => {
     const zip = await JSZip.loadAsync(out.bytes);
     const charts = Object.keys(zip.files).filter((f) => /^xl\/charts\/chart\d+\.xml$/.test(f));
     expect(charts.length).toBeGreaterThanOrEqual(5);
-    expect(await zip.file('xl/worksheets/sheet2.xml')!.async('string')).toContain('<drawing r:id="rIdDrawing1"/>');
+    const sheet2 = await zip.file('xl/worksheets/sheet2.xml')!.async('string');
+    expect(sheet2).toContain('<drawing r:id="rIdDrawing1"/>');
+    // Excel is strict about CT_Worksheet child order: sheetPr first, then … pageSetup … ignoredErrors … drawing last
+    const pos = (t: string) => sheet2.indexOf(t);
+    expect(pos('<sheetPr')).toBeGreaterThan(-1);
+    expect(pos('<sheetPr')).toBeLessThan(pos('<dimension'));
+    expect(pos('</sheetData>')).toBeLessThan(pos('<pageSetup'));
+    if (pos('<ignoredErrors') >= 0) expect(pos('<pageSetup')).toBeLessThan(pos('<ignoredErrors'));
+    expect(pos('<pageSetup')).toBeLessThan(pos('<drawing'));
+    expect(pos('<drawing')).toBeGreaterThan(pos('</sheetData>'));
+    expect(sheet2.trimEnd().endsWith('<drawing r:id="rIdDrawing1"/></worksheet>')).toBe(true);
     expect(await zip.file('[Content_Types].xml')!.async('string')).toContain('drawingml.chart+xml');
     const wb = XLSX.read(out.bytes, { type: 'array', cellFormula: true });
     const sum = wb.Sheets['Summary'];

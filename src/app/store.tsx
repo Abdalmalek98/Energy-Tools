@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AnalysisResult, ColumnMapping, LoggerAnalysis, LoggerData, ParsedBms, RawTable, Settings } from '../types';
 import { DEFAULT_SETTINGS, mergeSettings } from '../settings/defaults';
-import { autoMap } from '../analysis/bms';
+import { autoMapTable, detectUnitSettings } from '../analysis/bms';
 import { runPipeline, suggestChiller } from '../analysis/pipeline';
 import { analyzeLogger } from '../fluke/logger';
 import { parseFlukeFile, SUPPORTED_EXTENSIONS } from '../fluke/parse';
@@ -101,7 +101,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!t.headers.length || !t.rows.length) throw new Error('The file contains no data rows.');
       setTable(t);
       setBmsFileName(f.name);
-      setMappingState(autoMap(t.headers));
+      const m = autoMapTable(t);
+      setMappingState(m);
+      const units = detectUnitSettings(t, m);
+      if (Object.keys(units).length) setSettings((st) => ({ ...st, ...units }));
       // re-suggest chiller assignments for loggers that were loaded first
       setLoggers((ls) => ls);
       dirty();
@@ -117,10 +120,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [importBmsFile]);
   const clearBms = () => { setTable(null); setBmsFileName(undefined); setMappingState({}); dirty(); };
   const setMapping = (m: ColumnMapping) => { setMappingState(m); dirty(); };
-  const autoMapNow = () => { if (table) { setMappingState(autoMap(table.headers)); dirty(); } };
+  const autoMapNow = () => {
+    if (!table) return;
+    const m = autoMapTable(table);
+    setMappingState(m);
+    const units = detectUnitSettings(table, m);
+    if (Object.keys(units).length) setSettings((st) => ({ ...st, ...units }));
+    dirty();
+  };
 
   // ---- loggers
   const bmsChillers = pipeline.parsed?.chillers ?? [];
+  // a logger loaded before the BMS file (or whose name matched nothing) follows a single-chiller BMS file automatically
+  useEffect(() => {
+    if (bmsChillers.length !== 1) return;
+    setLoggers((ls) => (ls.some((l) => !bmsChillers.includes(l.chiller)) ? ls.map((l) => (bmsChillers.includes(l.chiller) ? l : { ...l, chiller: bmsChillers[0] })) : ls));
+  }, [bmsChillers.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
   const importLoggerFiles = useCallback(async (files: PickedFile[]) => {
     for (const f of files) {
       try {
