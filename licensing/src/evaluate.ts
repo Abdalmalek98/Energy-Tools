@@ -11,6 +11,8 @@ export interface StoredLicense {
   receipt?: string;                // latest verified server receipt
   lastValidatedAt?: string;        // server time of the last successful validation
   highWater: string;               // latest time ever observed (clock-rollback protection)
+  /** the server refused this computer (revoked while offline-registered, replaced, deactivated…): stays locked until a successful activation/validation */
+  refused?: { error: string; message: string };
 }
 
 export type LicenseStatus =
@@ -51,6 +53,7 @@ export function evaluate(stored: StoredLicense | null, c: EvalContext): Evaluati
   const effNow = Math.max(c.nowMs, Number.isNaN(high) ? 0 : high);       // a rolled-back clock can never extend a licence
   const rollback = !Number.isNaN(high) && c.nowMs < high - CLOCK_TOLERANCE_MS;
 
+  if (stored.refused) return bad(stored.refused.error === "expired" ? "expired" : stored.refused.error === "revoked" ? "revoked" : stored.refused.error === "suspended" ? "suspended" : "invalid", stored.refused.message, effNow, null, rollback);
   const v = verifyCode(stored.code, { keys: c.keys.license, product: c.product, nowMs: effNow, releaseBuild: c.releaseBuild });
   if (!v.ok) return bad("invalid", v.message, effNow, null, rollback);
   const p: LicensePayload = v.payload;
@@ -89,12 +92,12 @@ export function evaluate(stored: StoredLicense | null, c: EvalContext): Evaluati
   if (!p.offline) {                                                              // online licences must keep validating
     if (!receipt) return bad("validation_required", "This licence must be validated online. Please connect to the internet.", effNow, info, rollback);
     const until = Date.parse(receipt.validUntil);
-    if (effNow > until) return bad("validation_required", "The offline grace period has ended. Please connect to the internet to validate your licence.", effNow, info, rollback);
+    if (effNow > until) return bad("validation_required", "The offline grace period has ended. Please connect to the internet to validate your licence (and check the PC date and time).", effNow, info, rollback);
     const last = Date.parse(stored.lastValidatedAt ?? receipt.issuedAt);
     const left = until - effNow;
     if (effNow - last > (c.validateIntervalMs ?? 24 * HOUR) || left < (c.warnBeforeLockMs ?? 48 * HOUR))
       warning = `Licence validation is overdue. Please connect to the internet within ${Math.max(1, Math.ceil(left / DAY))} day(s) to keep using the app.`;
-    if (rollback) warning = "The computer clock is behind. Please connect to the internet to validate your licence.";
+    if (rollback) warning = "The computer clock is behind. Please connect to the internet to validate your licence (and check the PC date and time).";
   }
   return { status: warning ? "warning" : "active", usable: true, message: warning ? "Licence valid (validation overdue)." : "Licence valid.", warning, info, clockRollback: rollback, effectiveNowMs: effNow };
 }
