@@ -46,11 +46,11 @@ jobs:
         if: env.IS_RELEASE != 'true' && env.LSR_SERVICE_URL == ''
         shell: bash
         run: echo "LSR_SERVICE_URL=https://licensing.invalid" >> "$GITHUB_ENV"
-      - name: Build (release gate + production keys only)
+      - name: "Build (release gate + production keys only)"
         if: env.IS_RELEASE == 'true'
         shell: bash
         run: npm run dist -w app -- --publish never
-      - name: Build (PREVIEW: includes the development keyring, never ship it)
+      - name: "Build (PREVIEW - includes the development keyring, never ship it)"
         if: env.IS_RELEASE != 'true'
         shell: bash
         run: npm run dist:preview -w app -- --publish never
