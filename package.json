@@ -4,9 +4,11 @@
   "version": "0.1.0",
   "workspaces": [
     "shared",
+    "licensing",
     "service",
     "admin-cli",
-    "app"
+    "app",
+    "server"
   ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",

@@ -1,0 +1,15 @@
+{
+  "name": "@lsr/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/server.mjs --external:node:* --banner:js=\"import{createRequire}from'node:module';const require=createRequire(import.meta.url);\"",
+    "start": "node dist/server.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": { "@lsr/licensing": "*", "@lsr/shared": "*" },
+  "devDependencies": { "@types/node": "^22.0.0", "esbuild": "^0.21.5", "vitest": "~2.1.0" }
+}
