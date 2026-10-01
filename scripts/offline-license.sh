@@ -44,6 +44,27 @@ printf %s "CPA1.$P64" > "$TMP"
 SIG="$(openssl pkeyutl -sign -inkey "$KEY" -rawin -in "$TMP" | b64url)"
 [ -n "$SIG" ] || { echo "signing failed (needs OpenSSL 3 and an Ed25519 key)" >&2; exit 1; }
 
+# ---- self-check 1: does this private key match the public key built into the application?
+RAW_PUB="$(openssl pkey -in "$KEY" -pubout -outform DER | tail -c 32 | base64 -w0)"
+KEYFILE="$(dirname "$0")/../src-tauri/licensing-core/keys/public-keys.json"
+if [ -f "$KEYFILE" ]; then
+  EMBEDDED="$(tr -d '\n\r ' < "$KEYFILE" | grep -o "\"kid\":\"$KID\"[^}]*" | grep -o '"public":"[^"]*"' | cut -d'"' -f4 || true)"
+  if [ -z "$EMBEDDED" ]; then
+    echo "WARNING: key id '$KID' is not in $KEYFILE – the application will reject this code." >&2
+  elif [ "$EMBEDDED" != "$RAW_PUB" ]; then
+    echo "ERROR: this private key does NOT match the public key '$KID' built into the application." >&2
+    echo "  public key of --key file : $RAW_PUB" >&2
+    echo "  public key in the app    : $EMBEDDED" >&2
+    echo "  The app will say 'invalid signature'. Use the original private key file, or send the new public key so it can be installed." >&2
+    exit 3
+  fi
+fi
+# ---- self-check 2: verify the signature we just made
+PUBPEM="$(mktemp)"; SIGFILE="$(mktemp)"; trap 'rm -f "$TMP" "$PUBPEM" "$SIGFILE"' EXIT
+openssl pkey -in "$KEY" -pubout -out "$PUBPEM"
+printf %s "$SIG" | tr '_-' '/+' | { cat; printf '=='; } | base64 -d 2>/dev/null > "$SIGFILE" || true
+openssl pkeyutl -verify -pubin -inkey "$PUBPEM" -rawin -in "$TMP" -sigfile "$SIGFILE" >/dev/null 2>&1 || { echo "ERROR: local signature check failed – your OpenSSL cannot create Ed25519 signatures correctly (need OpenSSL 3)." >&2; exit 4; }
+echo "Self-check OK: key matches the application and the signature verifies." >&2
 echo "License ID : $LID" >&2
 echo "Customer   : $CUSTOMER" >&2
 echo "Expires    : $( [ "$PERPETUAL" = 1 ] && echo never || echo "${EXP//\"/}" )" >&2
