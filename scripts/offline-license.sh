@@ -2,7 +2,7 @@
 # Create an OFFLINE activation code signed with your production key – needs only bash + OpenSSL 3 (Git Bash is fine).
 # No Node.js and no licensing server required. The customer's PC never contacts any server for this code.
 #
-#   scripts/offline-license.sh --key ~/cpa-keys/k1.private.pem --kid k1 \
+#   scripts/offline-license.sh --key ~/cpa-keys/k2.private.pem --kid k2 \
 #       --machine MID1.xxxxx  --customer "Abdalmalek" [--days 365 | --perpetual] [--company "ACME"] [--id CPA-OFF-0001]
 #
 # --machine  the Machine ID shown on the application's activation / License screen (required: an offline code is
@@ -10,7 +10,7 @@
 # Offline codes cannot be revoked remotely – give short expiries to anyone but yourself.
 set -euo pipefail
 
-KEY=""; KID="k1"; MACHINE=""; CUSTOMER=""; COMPANY=""; DAYS=""; PERPETUAL=0; LID=""
+KEY=""; KID="k2"; MACHINE=""; CUSTOMER=""; COMPANY=""; DAYS=""; PERPETUAL=0; LID=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --key) KEY="$2"; shift 2;; --kid) KID="$2"; shift 2;; --machine) MACHINE="$2"; shift 2;;

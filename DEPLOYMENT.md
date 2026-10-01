@@ -4,9 +4,9 @@
 ```bash
 cd license-server
 cp ../.env.example .env            # fill in; never commit
-npm run keygen -- k1 ../private-keys
+npm run keygen -- k2 ../private-keys
 set -a; . ./.env; set +a
-CPA_SIGNING_KEY_FILE_k1=../private-keys/k1.private.pem CPA_ACTIVE_KEY_ID=k1 npm start
+CPA_SIGNING_KEY_FILE_k2=../private-keys/k2.private.pem CPA_ACTIVE_KEY_ID=k2 npm start
 ```
 Run behind HTTPS (built-in TLS via `CPA_TLS_CERT`/`CPA_TLS_KEY`, or a reverse proxy + `CPA_ALLOW_PLAIN_HTTP=1` + `CPA_TRUST_PROXY=1`). Back up `CPA_DB_PATH` (SQLite, WAL). For PostgreSQL port `schema.sql` and `src/db.js`/queries (plain SQL).
 

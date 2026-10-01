@@ -30,7 +30,7 @@ An offline license is a normal signed code with `off: 1`. The app verifies it on
 
 ### Making offline codes without Node or a server (Git Bash + OpenSSL)
 ```bash
-scripts/offline-license.sh --key ~/cpa-keys/k1.private.pem --kid k1 \
+scripts/offline-license.sh --key ~/cpa-keys/k2.private.pem --kid k2 \
     --machine "MID1.…(from the app's activation screen)" --customer "Your Name" --perpetual      # or --days 365
 ```
 Prints the activation code (details on stderr). It signs locally with your private key; nothing is sent anywhere. The application must be a build that contains the matching public key (`k1`).
@@ -53,9 +53,9 @@ Binding modes: `none` (activation count still enforced), `first` (first activati
 Independent control per customer (30-day, 365-day, revoked, perpetual) needs **no rebuild** — state lives in the database.
 
 ## Key management and rotation
-1. `cd license-server && npm run keygen -- k1 ../private-keys` (private PEM, mode 0600; keep out of Git — `*.pem` and `private-keys/` are ignored).
-2. Add the printed public entry to `src-tauri/licensing-core/keys/public-keys.json` (done for `k1`; `dev-1` now lives in `keys/dev-keys.json`, compiled into debug builds only), rebuild the app.
-3. Give the service the key: `CPA_SIGNING_KEY_FILE_k1=/secure/path/k1.private.pem`, `CPA_ACTIVE_KEY_ID=k1`.
+1. `cd license-server && npm run keygen -- k2 ../private-keys` (private PEM, mode 0600; keep out of Git — `*.pem` and `private-keys/` are ignored).
+2. Add the printed public entry to `src-tauri/licensing-core/keys/public-keys.json` (done for `k2`; `dev-1` now lives in `keys/dev-keys.json`, compiled into debug builds only), rebuild the app.
+3. Give the service the key: `CPA_SIGNING_KEY_FILE_k2=/secure/path/k2.private.pem`, `CPA_ACTIVE_KEY_ID=k2`.
 4. **Rotate**: generate `k2`, ship an app update containing both public keys, then set `CPA_ACTIVE_KEY_ID=k2` (keep `k1` loaded so existing codes/receipts still verify; mark `"retired": true` in the app keyring later). Apps that lack `k2` show "unknown key … please update".
 The committed `license-server/dev/dev-private-key.pem` (`dev-1`) is a throw-away test key: release builds ignore dev keys and `scripts/check-release-keys.mjs` blocks a release without a production key.
 
