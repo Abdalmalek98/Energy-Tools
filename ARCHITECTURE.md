@@ -32,6 +32,12 @@ results never depend on upload order.
 * **Findings' savings** use documented indicative assumptions (`analysis/findings.ts › ASSUMPTIONS`); they are estimates.
 * **Load** for °F inputs is computed after converting both temperatures to °C, which equals ΔT(°F)×5/9.
 
+## Weather (cooling degree days)
+`analysis/cdd.ts` reads the customer's daily weather file (CDD column, or daily mean / Tmax+Tmin temperature with a base temperature; °F converted). `analysis/cddAnalysis.ts` rolls the plant results up per day, joins CDD by date and fits `daily kWh = b0 + b1·CDD` and `daily TR·h = c0 + c1·CDD` (`regression/cdd.ts`, daily Guideline 14 limits: CV ≤ 15 %, |NMBE| ≤ 5 %). Outputs: weather-normalised energy and kW/TR at a reference CDD (mean of the analysed days, or typical annual CDD ÷ 365), weather-driven vs base-load share, actual vs expected energy, and a "Weather (CDD) baseline" finding. Notes:
+* A day enters the regression when ≥ 90 % of it is logged (setting). Logged time is counted from all timestamps, so hours with the plant off still count as covered; energy is that of the rows that passed the filters.
+* The baseline is fitted over the whole analysed period, so a late change in consumption is partly absorbed by the fit (drift is understated).
+* Temperature files keep the daily mean temperature, so changing the base temperature recomputes CDD.
+
 ## Licensing components
 See LICENSING.md. Database schema: `license-server/schema.sql` (licenses, activations, counters, audit).
 

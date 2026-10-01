@@ -4,6 +4,7 @@ import { Banner, Card, Chip, NeedData, PageHead, Table } from '../components/ui'
 import { XYChart } from '../components/charts';
 import type { RegressionModel, RegressionResult } from '../types';
 import { fmt } from '../utils/format';
+import { CddPanel } from './CddPanel';
 
 function ModelDetail({ m, selected }: { m: RegressionModel; selected: boolean }) {
   return (
@@ -27,6 +28,21 @@ export function RegressionPage() {
   if (!table || !a) return (<><PageHead title="Regression" /><NeedData /></>);
   const reg = subjects.find((s) => s.subject === sel) ?? subjects[0];
   if (!reg) return null;
+  const tabs = (
+    <div className="tabs" role="tablist">
+      {subjects.map((s) => <button key={s.subject} role="tab" aria-selected={sel === s.subject || (sel === 'CDD' ? false : s.subject === reg.subject)} className="tab" onClick={() => setSel(s.subject)}>{s.subject === 'Plant' ? 'Plant' : s.subject}</button>)}
+      {a.cdd && <button role="tab" aria-selected={sel === 'CDD'} className="tab" onClick={() => setSel('CDD')}>Weather (CDD)</button>}
+    </div>
+  );
+  if (sel === 'CDD' && a.cdd) {
+    return (
+      <>
+        <PageHead title="Regression" subtitle="Daily energy against the customer's cooling degree days, with Guideline 14 daily limits and weather-normalised results." />
+        {tabs}
+        <CddPanel a={a} />
+      </>
+    );
+  }
   // observed data and fitted curve
   const pts = sel === 'Plant' || !reg
     ? a.plantRows.filter((_, i) => i % Math.ceil(a.plantRows.length / 1500) === 0).map((p) => ({ x: p.tr, y: p.kW + p.aux, e: p.ecwt, l: p.lchwt }))
@@ -39,7 +55,7 @@ export function RegressionPage() {
   return (
     <>
       <PageHead title="Regression" subtitle="OLS baseline models of kW against load (and condenser/chilled-water temperature), assessed with ASHRAE Guideline 14." />
-      <div className="tabs" role="tablist">{subjects.map((s) => <button key={s.subject} role="tab" aria-selected={s.subject === reg.subject} className="tab" onClick={() => setSel(s.subject)}>{s.subject === 'Plant' ? 'Plant' : s.subject}</button>)}</div>
+      {tabs}
       {reg.notes.map((n, i) => <div key={i} style={{ marginBottom: 8 }}><Banner>{n}</Banner></div>)}
       {reg.models.length > 0 && (
         <>

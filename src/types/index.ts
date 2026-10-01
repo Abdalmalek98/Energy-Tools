@@ -30,6 +30,12 @@ export interface Settings {
   minPLR: number;
   auxMode: AuxMode;
   analyseLoggedPeriodOnly: boolean;
+  /** Base temperature (°C) when CDD is derived from a temperature file. 18.3 °C = 65 °F. */
+  cddBaseTemp: number;
+  /** Typical-year annual CDD (0 = not set) for annual weather-normalised energy. */
+  typicalAnnualCdd: number;
+  /** Minimum share of a day that must be logged for it to enter the CDD regression. */
+  cddMinCoverage: number;
   chillerOverrides: Record<string, { ratedTR?: number; ratedKwPerTR?: number }>;
 }
 
@@ -234,6 +240,8 @@ export interface AnalysisResult {
   firstDate: string;
   lastDate: string;
   sources: { bmsFile?: string; loggers: string[] };
+  /** Present when the customer uploaded cooling-degree-day (or daily temperature) data. */
+  cdd: CddAnalysis | null;
 }
 
 // ---- Logger (Fluke) ----
@@ -296,4 +304,60 @@ export interface LoggerAnalysis {
   flags: LoggerFlag[];
   firstTs: number;
   lastTs: number;
+}
+
+// ---- Cooling degree days (customer-supplied weather data) ----
+
+export interface CddDay {
+  day: number;
+  /** CDD as imported (for temperature files: at the base temperature used when the file was read). */
+  cdd: number;
+  /** Daily mean temperature in °C (temperature files only) – lets the base temperature be changed later. */
+  tempC?: number;
+}
+
+export interface CddData {
+  fileName: string;
+  source: 'cdd' | 'temperature';
+  baseTempC?: number;
+  days: CddDay[];
+  rowCount: number;
+  notes: string[];
+}
+
+export interface DailyRow {
+  day: number; // UTC midnight of the (naive local) calendar day
+  hoursLogged: number;
+  coverage: number; // logged hours / 24
+  chillerKWh: number;
+  auxKWh: number;
+  kWh: number;
+  trHours: number;
+  kwPerTR: number;
+  cdd: number | null;
+  /** Model-expected daily energy at this day's CDD (null without CDD / model). */
+  expectedKWh: number | null;
+  residualKWh: number | null;
+  used: boolean; // entered the regression
+}
+
+export interface CddAnalysis {
+  fileName: string;
+  source: 'cdd' | 'temperature';
+  days: DailyRow[];
+  usedDays: number;
+  skipped: { noCdd: number; partial: number };
+  energyModel: RegressionModel | null; // daily kWh = b0 + b1·CDD
+  loadModel: RegressionModel | null; // daily TR·h = b0 + b1·CDD
+  refCdd: number;
+  refLabel: string;
+  normalised: { kWhPerDay: number; trHoursPerDay: number; kwPerTR: number } | null;
+  annual: { typicalCdd: number; kWh: number; trHours: number } | null;
+  weatherShare: number | null; // share of mean daily energy explained by CDD
+  baseShare: number | null; // share that is CDD-independent (base load)
+  actualKWh: number; // over used days
+  expectedKWh: number;
+  firstHalfResidualPct: number | null;
+  secondHalfResidualPct: number | null;
+  notes: string[];
 }

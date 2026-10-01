@@ -72,6 +72,13 @@ export function detectUnitSettings(table: RawTable, m: ColumnMapping): Partial<S
   const t = `${h(m.lchwt)} ${h(m.echwt)}`;
   if (/\((°\s*)?f\)|°f|deg\s*f/i.test(t)) out.tempUnit = 'F';
   else if (/\((°\s*)?c\)|°c|deg\s*c/i.test(t)) out.tempUnit = 'C';
+  // a load column without flow + both temperatures: take the load from the column, unit from its header
+  const haveFlowDt = m.flow !== undefined && m.lchwt !== undefined && m.echwt !== undefined;
+  if (m.load !== undefined && !haveFlowDt) {
+    out.loadSource = 'column';
+    const lh = h(m.load);
+    out.loadUnit = /kwh.?th|kwh\s*thermal/i.test(lh) ? 'kWhth' : /tr.?h\b|ton.?h/i.test(lh) ? 'TRh' : /kw.?th|kw\s*thermal/i.test(lh) ? 'kWth' : 'TR';
+  }
   return out;
 }
 

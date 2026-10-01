@@ -40,7 +40,7 @@ export async function buildWorkbook(input: ExportInput): Promise<ExportOutput> {
     chartsSheet.set(0, 0, 'Charts', styles.title);
     chartsSheet.set(1, 0, 'Native Excel charts. Source ranges are on the "Chart Data" sheet.', styles.sub);
     chartsSheet.widths = Array(20).fill(11);
-    sheets.push(summary, chartsSheet, findingsSheet(a), chillersSheet(a), regressionSheet(a), loadProfileSheet(a), ph.sheet, chillerDataSheet(a), cd);
+    sheets.push(summary, chartsSheet, findingsSheet(a), chillersSheet(a), regressionSheet(a), ...(a.cdd ? [cddSheet(a)] : []), loadProfileSheet(a), ph.sheet, chillerDataSheet(a), cd);
     if (loggerAnalyses.length) {
       sheets.push(loggerSummarySheet(loggerAnalyses), loggerDataSheet(loggerAnalyses.map((x) => x.data), loggerAnalyses.map((x) => x.an)));
     }
@@ -403,8 +403,81 @@ function chartsFor(a: AnalysisResult, cd: Sheet): ChartSpec[] {
       ], anchor: pos(charts.length) });
     col += 3;
   }
+  // 7/8: customer CDD – daily energy vs CDD (with the fitted line) and actual vs weather-expected
+  const cdd = a.cdd;
+  if (cdd && cdd.energyModel) {
+    const u = cdd.days.filter((d) => d.used);
+    const lo = Math.min(...u.map((d) => d.cdd as number)), hi = Math.max(...u.map((d) => d.cdd as number));
+    const fit = [lo, hi].map((x) => cdd.energyModel!.predict(x));
+    put(col, 'CDD', u.map((d) => d.cdd as number), '0.0'); put(col + 1, 'Daily kWh', u.map((d) => d.kWh), '#,##0');
+    put(col + 2, 'Fit CDD', [lo, hi], '0.0'); put(col + 3, 'Fit kWh', fit, '#,##0');
+    charts.push({ title: 'Daily plant energy vs cooling degree days', type: 'scatter', xTitle: 'CDD', yTitle: 'kWh/day', xFormat: '0', yFormat: '#,##0', yMin: 0,
+      series: [
+        { name: 'Days', xRef: ref(col, u.length), yRef: ref(col + 1, u.length), xVals: u.map((d) => d.cdd as number), yVals: u.map((d) => d.kWh), color: PAL[0] },
+        { name: `Fit (R² ${cdd.energyModel.r2.toFixed(2)})`, xRef: ref(col + 2, 2), yRef: ref(col + 3, 2), xVals: [lo, hi], yVals: fit, color: PAL[4], kind: 'line' },
+      ], anchor: pos(charts.length) });
+    col += 4;
+    const dts = u.map((d) => toExcelDate(d.day));
+    put(col, 'Date', dts, 'dd-mmm'); put(col + 1, 'Actual kWh', u.map((d) => d.kWh), '#,##0'); put(col + 2, 'Expected kWh', u.map((d) => d.expectedKWh as number), '#,##0');
+    charts.push({ title: 'Daily energy – actual vs weather-expected', type: 'scatter', xTitle: 'Date', yTitle: 'kWh/day', xFormat: 'dd-mmm', yFormat: '#,##0', yMin: 0,
+      series: [
+        { name: 'Actual', xRef: ref(col, u.length), yRef: ref(col + 1, u.length), xVals: dts, yVals: u.map((d) => d.kWh), color: PAL[1], kind: 'both' },
+        { name: 'Expected from CDD', xRef: ref(col, u.length), yRef: ref(col + 2, u.length), xVals: dts, yVals: u.map((d) => d.expectedKWh as number), color: PAL[0], kind: 'line', dash: true },
+      ], anchor: pos(charts.length) });
+    col += 3;
+  }
   cd.widths = Array(col + 1).fill(14);
   return charts;
+}
+
+// ---------------------------------------------------------------- CDD sheet
+function cddSheet(a: AnalysisResult) {
+  const c = a.cdd!;
+  const s = new Sheet('CDD Daily');
+  s.set(0, 0, 'Cooling degree days – daily regression & weather normalisation', styles.title);
+  s.set(1, 0, `Weather file: ${c.fileName} (${c.source === 'cdd' ? 'CDD supplied' : `CDD from temperature, base ${a.settings.cddBaseTemp} °C`}). Days enter the regression when ≥ ${Math.round(a.settings.cddMinCoverage * 100)} % logged. Model: daily kWh = b0 + b1·CDD.`, styles.sub);
+  const em = c.energyModel;
+  const lm = c.loadModel;
+  s.head(3, 0, ['Model', 'Value', 'Unit / note']);
+  const row = (r: number, label: string, v: number | string | { f: string; v: number | string }, z: string, note = '') => { s.set(r, 0, label, styles.label); s.set(r, 1, v, typeof v === 'string' ? styles.body : styles.num, z); s.set(r, 2, note, styles.body); };
+  if (em) {
+    row(4, 'Base load b0', em.coefs[0].value, '#,##0.0', 'kWh/day at CDD = 0');
+    row(5, 'Weather slope b1', em.coefs[1].value, '#,##0.00', 'kWh per CDD');
+    row(6, 'R²', em.r2, '0.0000'); row(7, 'CV(RMSE)', em.cv / 100, '0.00%', `limit ${em.guideline14.cvLimit} % (daily data)`);
+    row(8, 'NMBE', em.nmbe / 100, '0.000%', `limit ±${em.guideline14.nmbeLimit} %`);
+    row(9, 'Guideline 14', em.guideline14.pass ? 'PASS' : 'FAIL', '@');
+    s.set(9, 1, em.guideline14.pass ? 'PASS' : 'FAIL', chip(em.guideline14.pass ? 'PASS' : 'FAIL'));
+    row(10, 'b1 95 % CI', `${em.coefs[1].ciLow.toFixed(2)} … ${em.coefs[1].ciHigh.toFixed(2)}`, '@', `n = ${em.n} days`);
+  } else row(4, 'Regression', 'not computed', '@', c.notes.filter((n) => /Only|hardly|could not/.test(n)).join(' '));
+  if (lm) { row(11, 'TR·h base c0', lm.coefs[0].value, '#,##0.0', 'TR·h/day at CDD = 0'); row(12, 'TR·h slope c1', lm.coefs[1].value, '#,##0.00', 'TR·h per CDD'); }
+  if (em && lm) {
+    row(13, 'Reference CDD', c.refCdd, '0.00', c.refLabel);
+    const kwh = em.coefs[0].value + em.coefs[1].value * c.refCdd;
+    const trh = lm.coefs[0].value + lm.coefs[1].value * c.refCdd;
+    row(14, 'Normalised energy', { f: 'B5+B6*B14', v: kwh }, '#,##0', 'kWh/day at the reference CDD');
+    row(15, 'Normalised cooling', { f: 'B12+B13*B14', v: trh }, '#,##0', 'TR·h/day');
+    row(16, 'Normalised plant kW/TR', { f: 'IF(B16>0,B15/B16,"")', v: trh > 0 ? kwh / trh : '' }, '0.000', 'weather-normalised efficiency');
+    if (c.annual) row(17, 'Annual normalised energy', { f: `365*B5+B6*${c.annual.typicalCdd}`, v: c.annual.kWh }, '#,##0', `typical year ${c.annual.typicalCdd} CDD`);
+  }
+  const h0 = 19;
+  s.head(h0, 0, ['Date', 'CDD', 'Hours logged', 'Coverage', 'Chiller kWh', 'Aux kWh', 'Total kWh', 'TR·h', 'kW/TR', 'Used', 'Expected kWh', 'Residual kWh', 'Residual %']);
+  c.days.forEach((d, i) => {
+    const r = h0 + 1 + i;
+    const x = r + 1;
+    s.set(r, 0, toExcelDate(d.day), styles.num, 'yyyy-mm-dd');
+    s.set(r, 1, d.cdd ?? '', styles.num, '0.00'); s.set(r, 2, d.hoursLogged, styles.num, '0.0'); s.set(r, 3, { f: `C${x}/24`, v: d.coverage }, styles.num, '0%');
+    s.set(r, 4, d.chillerKWh, styles.num, '#,##0'); s.set(r, 5, d.auxKWh, styles.num, '#,##0');
+    s.set(r, 6, { f: `E${x}+F${x}`, v: d.kWh }, styles.num, '#,##0'); s.set(r, 7, d.trHours, styles.num, '#,##0');
+    s.set(r, 8, { f: `IF(H${x}>0,G${x}/H${x},"")`, v: d.trHours > 0 ? d.kWh / d.trHours : '' }, styles.num, '0.000');
+    s.set(r, 9, d.used ? 1 : 0, styles.num, '0');
+    if (em) {
+      s.set(r, 10, { f: `IF(J${x}=1,$B$5+$B$6*B${x},"")`, v: d.expectedKWh ?? '' }, styles.num, '#,##0');
+      s.set(r, 11, { f: `IF(J${x}=1,G${x}-K${x},"")`, v: d.residualKWh ?? '' }, styles.num, '#,##0');
+      s.set(r, 12, { f: `IF(J${x}=1,L${x}/K${x},"")`, v: d.expectedKWh ? (d.residualKWh as number) / d.expectedKWh : '' }, styles.num, '0.0%');
+    }
+  });
+  s.widths = [24, 11, 12, 10, 12, 10, 12, 11, 9, 7, 13, 13, 11];
+  return s;
 }
 
 // ---------------------------------------------------------------- Logger sheets

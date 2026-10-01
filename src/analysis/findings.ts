@@ -160,5 +160,34 @@ export function buildFindings(a: AnalysisResult, bms: ParsedBms): Finding[] {
       ],
     });
   }
+
+  // 10 Weather (only when the customer supplied CDD data)
+  if (a.cdd) {
+    const c = a.cdd;
+    const m = c.energyModel;
+    if (!m) {
+      out.push({ id: 'weather', status: 'Review', title: 'Weather (CDD) baseline', text: c.notes.filter((n) => /Only|hardly|could not/.test(n)).join(' ') || 'The CDD regression could not be computed.', numbers: [{ label: 'Days used', value: String(c.usedDays) }] });
+    } else {
+      const slope = m.coefs[1].value;
+      const late = c.secondHalfResidualPct;
+      const drift = late !== null && c.firstHalfResidualPct !== null ? late : null;
+      // a large unexplained rise is the headline even when the whole-period fit is poor (the rise is what spoils the fit)
+      const status: Status = drift !== null && drift > 10 ? 'Action' : !m.guideline14.pass || (drift !== null && drift > 5) ? 'Review' : 'OK';
+      const secondHalf = c.days.filter((d) => d.used).slice(Math.floor(c.usedDays / 2));
+      const excess = secondHalf.reduce((t, d) => t + Math.max(0, d.residualKWh ?? 0), 0);
+      out.push({
+        id: 'weather', status, title: 'Weather (CDD) baseline',
+        text: `Daily energy follows cooling degree days with R² ${fmt(m.r2, 2)} (${m.guideline14.pass ? 'Guideline 14 PASS' : 'Guideline 14 FAIL'}): about ${fmt0(slope)} kWh per CDD on top of a base of ${fmt0(m.coefs[0].value)} kWh/day.` +
+          (c.weatherShare !== null ? ` Weather explains ${fmt(c.weatherShare * 100, 0)} % of average daily energy.` : '') +
+          (drift !== null ? ` In the second half of the period the plant used ${fmt(drift, 1)} % ${drift >= 0 ? 'more' : 'less'} than the weather-expected energy (first half ${fmt(c.firstHalfResidualPct ?? NaN, 1)} %).` : '') +
+          (c.normalised ? ` Weather-normalised plant efficiency at ${c.refLabel}: ${fmt(c.normalised.kwPerTR, 3)} kW/TR.` : ''),
+        numbers: [
+          { label: 'Days used', value: String(c.usedDays) }, { label: 'R²', value: fmt(m.r2, 3) }, { label: 'CV(RMSE)', value: `${fmt(m.cv, 1)} %` }, { label: 'NMBE', value: `${fmt(m.nmbe, 2)} %` },
+          ...(c.normalised ? [{ label: 'Normalised kW/TR', value: fmt(c.normalised.kwPerTR, 3) }] : []),
+        ],
+        ...(drift !== null && drift > 5 && excess > 0 ? sav(a, excess) : {}),
+      });
+    }
+  }
   return out;
 }

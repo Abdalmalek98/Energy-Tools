@@ -55,3 +55,16 @@ describe('stand-alone data-logger CSV (dlog layout)', () => {
     expect(out.analysis!.kpis.plantKwPerTR).toBeGreaterThan(0);
   });
 });
+
+describe('load column without flow/temperatures', () => {
+  it('switches the cooling-load source to the column and reads the unit from the header', () => {
+    for (const [hdr, unit] of [['Cooling Load (TR)', 'TR'], ['Cooling load kWth', 'kWth'], ['Load TR.h', 'TRh'], ['Cooling load kWh thermal', 'kWhth']] as const) {
+      const t = parseTable(`time,kW,${hdr}\n2026-07-01 00:00,100,300\n2026-07-01 00:05,100,300`);
+      const u = detectUnitSettings(t, autoMapTable(t));
+      expect(u.loadSource, hdr).toBe('column');
+      expect(u.loadUnit, hdr).toBe(unit);
+    }
+    const t2 = parseTable('time,kW,Flow L/s,LCHWT,ECHWT\n2026-07-01 00:00,1,2,3,4');
+    expect(detectUnitSettings(t2, autoMapTable(t2)).loadSource).toBeUndefined();
+  });
+});

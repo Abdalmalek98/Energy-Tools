@@ -22,6 +22,9 @@ export const DEFAULT_SETTINGS: Settings = {
   minPLR: 0.05,
   auxMode: 'max',
   analyseLoggedPeriodOnly: true,
+  cddBaseTemp: 18.3,
+  typicalAnnualCdd: 0,
+  cddMinCoverage: 0.9,
   chillerOverrides: {},
 };
 

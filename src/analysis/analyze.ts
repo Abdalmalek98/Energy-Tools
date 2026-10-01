@@ -1,4 +1,5 @@
 import type {
+  CddData,
   AnalysisResult, BinRow, ChillerRow, ChillerSummary, ParsedBms, RegressionResult, Row, Settings,
 } from '../types';
 import { aggregatePlant, filterRows, ratedKwPerTROf, ratedTROf } from './filter';
@@ -9,6 +10,7 @@ import { computeIplv, regress, type RegSample } from '../regression/models';
 import { mean, percentile } from '../utils/stats';
 import { fmtDate } from '../utils/format';
 import { buildFindings } from './findings';
+import { analyzeCdd } from './cddAnalysis';
 
 const fin = (a: number[]) => a.filter(Number.isFinite);
 
@@ -40,6 +42,8 @@ export interface AnalysisInput {
   settings: Settings;
   attachments?: LoggerAttachment[];
   bmsFileName?: string;
+  /** Customer-supplied cooling degree days (or daily temperatures) */
+  cdd?: CddData | null;
 }
 
 export function analyze(input: AnalysisInput): AnalysisResult {
@@ -123,7 +127,19 @@ export function analyze(input: AnalysisInput): AnalysisResult {
     plantRegression, chillerRegressions, findings: [], warnings,
     firstDate: fmtDate(firstTs), lastDate: fmtDate(lastTs),
     sources: { bmsFile: input.bmsFileName, loggers: attachments.map((a) => a.logger.fileName) },
+    cdd: null,
   };
+  if (input.cdd && kept.length) {
+    // logged hours per day from ALL timestamps, so hours with the plant off still count as covered
+    const seen = new Map<number, Set<number>>();
+    for (const r of rows) {
+      if (!Number.isFinite(r.ts)) continue;
+      const d = Math.floor(r.ts / 86400000) * 86400000;
+      (seen.get(d) ?? seen.set(d, new Set()).get(d)!).add(r.ts);
+    }
+    const observed = new Map([...seen].map(([d, set]) => [d, set.size * dtH]));
+    result.cdd = analyzeCdd(plant, dtH, observed, input.cdd, s);
+  }
   result.findings = kept.length ? buildFindings(result, bms) : [];
   return result;
 }

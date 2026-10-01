@@ -11,6 +11,8 @@ node --test license-manager/test/*.test.js
 | `tests/parsing.test.ts` | comma/semicolon/tab/decimal-comma/BOM/quoted CSV, timestamps (ISO, DMY/MDY, Excel serial, epoch, ticks), Fluke TXT/CSV/UTF-16/ZIP-FCA2/SQLite-FCA2/closed binary, logger statistics, flags, negative phase = Priority |
 | `tests/merge.test.ts` | logger↔BMS merge window/nearest fallback, both upload orders, logged-period-only, logger removal |
 | `tests/excel.test.ts` | sheets, native chart parts, cached formula values, **LibreOffice recalculation of a cache-free copy: every formula value matches, no errors** |
+| `tests/cdd.test.ts` | CDD/temperature file import (units, hourly aggregation, errors), daily roll-up, exact regression recovery (kWh = 2880 + 576·CDD), normalised kW/TR, typical-year annual figures, partial/off/missing days, base-temperature recompute, weather finding and drift, LibreOffice recalculation of the CDD sheet |
+| `tests/dlog.test.ts` | data-logger CSV quirks (blank time column, US dates, RTD probes, GPM, single-chiller logger attach), load-column auto-detection |
 | `tests/project.test.ts` | `.cpa` round trip, backup, tamper detection |
 | `tests/acceptance.test.ts` | original Fluke acceptance figures — runs only when `sample-data/LC5_CH3__SN_62934227__260628_1539_trend.txt` exists (skipped otherwise; reported as skipped) |
 | `license-server/test` | valid, tampered/forged/unknown-key tokens, expired, future, revoked, suspended, wrong product, wrong machine, max activations, tolerance, renewal/extension/perpetual, replacement, reset, authorise, key rotation, admin auth, rate limit, audit |

@@ -6,7 +6,7 @@ import { fmt0 } from '../utils/format';
 const DELIM: Record<string, string> = { ',': 'comma', ';': 'semicolon', '\t': 'tab' };
 
 export function DataImportPage() {
-  const { table, bmsFileName, importBms, importBmsFile, clearBms, parsed, analysisError, setPage, project, newProject, openProjectDialog, saveCurrent, saveAs, exportBackup, importBackup, recent, openRecent } = useStore();
+  const { cdd, cddError, importCdd, clearCdd, settings, table, bmsFileName, importBms, importBmsFile, clearBms, parsed, analysisError, setPage, project, newProject, openProjectDialog, saveCurrent, saveAs, exportBackup, importBackup, recent, openRecent } = useStore();
   const [over, setOver] = useState(false);
   const onDrop = async (e: DragEvent) => {
     e.preventDefault();
@@ -42,6 +42,20 @@ export function DataImportPage() {
           </div>
         </Card>
       )}
+      <Card title="Weather – cooling degree days (optional)" actions={cdd ? <button className="btn sm danger" onClick={clearCdd}>Remove</button> : undefined}>
+        <p style={{ marginTop: 0 }}>Upload the customer's daily weather file: a <b>CDD</b> column, or daily temperature (mean, or Tmax + Tmin; CDD = max(0, T − base {settings.cddBaseTemp} °C)). The analysis then regresses daily plant energy on CDD and reports weather-normalised results.</p>
+        {cddError && <div style={{ marginBottom: 10 }}><Banner kind="error" title="Cannot use this weather file. "><pre>{cddError}</pre></Banner></div>}
+        {cdd ? (
+          <div className="row" style={{ gap: 22 }}>
+            <span><b>{cdd.fileName}</b></span><span><b className="num">{cdd.days.length}</b> days</span>
+            <span>{new Date(cdd.days[0].day).toISOString().slice(0, 10)} → {new Date(cdd.days[cdd.days.length - 1].day).toISOString().slice(0, 10)}</span>
+            <span>source: {cdd.source === 'cdd' ? 'CDD column' : 'temperature'}</span>
+            <span>mean CDD <b className="num">{(cdd.days.reduce((a, d) => a + d.cdd, 0) / cdd.days.length).toFixed(1)}</b></span>
+            <button className="btn sm" onClick={importCdd}>Replace…</button>
+          </div>
+        ) : <button className="btn" onClick={importCdd}>Import CDD / weather file…</button>}
+        {cdd && cdd.notes.length > 0 && <ul className="hint">{cdd.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+      </Card>
       <Card title="Project">
         <div className="row">
           <span>Current: <b>{project.name}</b>{project.dirty ? ' •' : ''}</span>

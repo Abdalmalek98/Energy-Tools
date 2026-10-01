@@ -49,6 +49,13 @@ export function PlantSettingsPage() {
         </div>
         <p className="hint">Always excluded: non-numeric values, kW ≤ 1, load ≤ rated capacity × minimum PLR.</p>
       </Card>
+      <Card title="Weather (CDD) analysis">
+        <div className="form-grid">
+          <NumberField label="CDD base temperature (°C)" value={s.cddBaseTemp} onChange={(v) => set('cddBaseTemp', v)} hint="used when the weather file has temperatures; 18.3 °C = 65 °F" />
+          <NumberField label="Typical annual CDD (optional)" value={s.typicalAnnualCdd} onChange={(v) => set('typicalAnnualCdd', v)} hint="0 = not set; enables annual weather-normalised energy" />
+          <NumberField label="Minimum logged share of a day" value={s.cddMinCoverage} step="0.05" onChange={(v) => set('cddMinCoverage', v)} hint="days below this are left out of the regression" />
+        </div>
+      </Card>
       {ids.length > 0 && (
         <Card title="Per-chiller ratings (optional overrides)">
           <div className="table-wrap"><table>
