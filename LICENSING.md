@@ -33,7 +33,7 @@ An offline license is a normal signed code with `off: 1`. The app verifies it on
 scripts/offline-license.sh --key ~/cpa-keys/k2.private.pem --kid k2 \
     --machine "MID1.…(from the app's activation screen)" --customer "Your Name" --perpetual      # or --days 365
 ```
-Prints the activation code (details on stderr). It signs locally with your private key; nothing is sent anywhere. The application must be a build that contains the matching public key (`k1`).
+Prints the activation code (details on stderr). It signs locally with your private key; nothing is sent anywhere. The application must be a build that contains the matching public key (`k2`; `k1` was retired after its private key was exposed).
 
 ## Machine fingerprint
 Five hashed components (Windows: MachineGuid, computer name, CPU, BIOS, baseboard). Only SHA-256 hashes leave the PC. Two identities are the same machine if the combined hash matches or ≥ 60 % of the components match, so a single hardware swap does not break a licence. Machine ID string for specific-machine licences: `MID1.<base64url(json)>`, shown on the License page.
