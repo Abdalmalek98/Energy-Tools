@@ -1,4 +1,6 @@
 {
-  "license": [],
+  "license": [
+    {"kid":"lic-1","publicKey":"MCowBQYDK2VwAyEAA+1cUZW7O/tv+EGG8hYAaeXhwTTLz4owKBsfJpbn0xU="}
+  ],
   "receipt": []
 }
