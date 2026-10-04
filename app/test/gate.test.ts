@@ -20,9 +20,9 @@ d("release gate", () => {
   const write = (name: string, o: unknown) => { const f = path.join(dir, name); writeFileSync(f, JSON.stringify(o, null, 2)); return f; };
   const good = write("good.json", { license: [lic], receipt: [rcp] });
 
-  it("FAILS for the repository as shipped (no production keys yet)", () => {
+  it("FAILS for the repository as shipped until the server's receipt key is added (the licence key lic-1 is already there)", () => {
     const r = spawnSync("bash", [GATE], { encoding: "utf8", env: { PATH: process.env.PATH!, LSR_SERVICE_URL: "https://licensing.test.invalid", LSR_RELEASE: "1" } });
-    expect(r.status).toBe(1); expect(r.stderr).toContain("no production license key"); expect(r.stderr).toContain("no production receipt key");
+    expect(r.status).toBe(1); expect(r.stderr).toContain("no production receipt key"); expect(r.stderr).not.toContain("no production license key");
   });
   it("fails for a development key, a malformed key, a missing receipt key, an http/local/placeholder URL, E2E mode and a missing LSR_RELEASE", () => {
     expect(gate(goodEnv(write("dev.json", { license: [dev], receipt: [rcp] }))).stderr).toContain("development key");
