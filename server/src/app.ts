@@ -5,7 +5,8 @@ import type { Config } from "./config";
 import { receiptPublicEntry } from "./config";
 import { audit, nowIso, openDb, rateLimit, row, rows, run, type Db } from "./db";
 import { activate, adminAction, ApiError, deactivate, effectiveExpiry, getLicense, licenseStatus, listLicenses, registerLicense, validate, type ActivationRow, type LicenseRow } from "./licenses";
-import { decodedSize, MAX_IMAGE_BYTES, MAX_IMAGES, readPage, UpstreamError } from "./claude";
+import { decodedSize, MAX_IMAGE_BYTES, MAX_IMAGES, UpstreamError } from "./claude";
+import { publicProvider, readWithProvider, saveProvider, testProvider, PROVIDERS, type ProviderName } from "./providers";
 import { MANAGER_HTML } from "./manager";
 
 export interface App { handle(req: IncomingMessage, res: ServerResponse): Promise<void>; db: Db; close(): void }
@@ -86,11 +87,12 @@ export function createApp(cfg: Config, db: Db = openDb(cfg.dbPath)): App {
       if (used >= quota) throw new ApiError(402, "quota", `Monthly quota of ${quota} pages reached. It resets on the 1st (UTC).`);
     }
     try {
-      const out = await readPage(cfg.anthropic, images as string[], quality, typeof body.hint === "string" ? body.hint : null);
+      const out = await readWithProvider(db, cfg, images as string[], quality, typeof body.hint === "string" ? body.hint : null);
       run(db, "INSERT INTO usage (license_id, ts, pages, model, ok, tokens_in, tokens_out) VALUES (?,?,1,?,1,?,?)", l.license_id, nowIso(), out.model, out.tokensIn, out.tokensOut);
       return send(res, 200, { page: out.page });
     } catch (e) {
-      run(db, "INSERT INTO usage (license_id, ts, pages, ok, error) VALUES (?,?,0,0,?)", l.license_id, nowIso(), String((e as Error).message).slice(0, 200));
+      run(db, "INSERT INTO usage (license_id, ts, pages, ok, error) VALUES (?,?,0,0,?)", l.license_id, nowIso(), String(e instanceof UpstreamError && e.detail ? `${e.message} [${e.detail}]` : (e as Error).message).slice(0, 400));
+      if (e instanceof ApiError) throw e;
       if (e instanceof UpstreamError) throw Object.assign(new ApiError(502, "upstream", e.message), { retryable: e.retryable });
       throw new ApiError(502, "upstream", "Unexpected error while reading the page.");
     }
@@ -117,6 +119,19 @@ export function createApp(cfg: Config, db: Db = openDb(cfg.dbPath)): App {
     if (req.method === "GET" && parts[0] === "audit") {
       const id = url.searchParams.get("license");
       return send(res, 200, { audit: id ? rows(db, "SELECT * FROM audit WHERE license_id = ? ORDER BY id DESC LIMIT 300", id) : rows(db, "SELECT * FROM audit ORDER BY id DESC LIMIT 300") });
+    }
+    if (parts[0] === "provider") {
+      if (req.method === "GET" && parts.length === 1) return send(res, 200, publicProvider(db, cfg));
+      if (req.method === "POST" && parts.length === 1) {
+        const changed = saveProvider(db, cfg, body);
+        audit(db, "admin", "provider_update", null, ip, { changed });          // field names only, never values
+        return send(res, 200, { ok: true, ...publicProvider(db, cfg) });
+      }
+      if (req.method === "POST" && parts[1] === "test") {
+        const name = (body.provider ?? publicProvider(db, cfg).provider) as ProviderName;
+        if (!PROVIDERS.includes(name)) throw new ApiError(400, "bad_request", "provider must be anthropic or groq.");
+        return send(res, 200, await testProvider(db, cfg, name));
+      }
     }
     if (req.method === "GET" && parts[0] === "info") return send(res, 200, { product: cfg.product, receiptKid: cfg.receiptKid, issuer: !!cfg.issuerKey, issuerKid: cfg.issuerKid ?? null, serverTime: nowIso() });
     if (req.method === "POST" && parts[0] === "licenses" && parts.length === 1) {

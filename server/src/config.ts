@@ -17,9 +17,16 @@ export interface Config {
   graceHours: number;
   allowDevKeys: boolean;
   trustProxy: boolean;
+  /** which model provider reads pages when nothing is chosen in the License Manager */
+  provider: "anthropic" | "groq";
   anthropic: { apiKey: string; baseUrl: string; modelBest: string; modelFast: string };
+  groq: { apiKey: string; baseUrl: string; modelBest: string; modelFast: string };
+  /** tests only: allow http://127.0.0.1 provider URLs */
+  allowInsecureUpstream: boolean;
 }
 
+/** A vision-capable Groq model as of the last time this was checked: VERIFY it in the Groq console (models change); use "Test connection" in the License Manager to list what your key can use. */
+export const DEFAULT_GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
 const need = (env: NodeJS.ProcessEnv, k: string) => { const v = env[k]; if (!v) throw new Error(`Missing environment variable ${k}. See docs/DEPLOYMENT.md.`); return v; };
 const pem = (path: string) => createPrivateKey(readFileSync(path));
 
@@ -40,6 +47,9 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
     graceHours: Number(env.GRACE_HOURS ?? 168),
     allowDevKeys: env.ALLOW_DEV_KEYS === "1",
     trustProxy: env.BEHIND_PROXY === "1",
+    provider: env.PROVIDER === "groq" ? "groq" : "anthropic",
+    allowInsecureUpstream: env.ALLOW_INSECURE_UPSTREAM === "1",
+    groq: { apiKey: env.GROQ_API_KEY ?? "", baseUrl: env.GROQ_BASE_URL ?? "https://api.groq.com/openai/v1", modelBest: env.GROQ_MODEL_BEST ?? DEFAULT_GROQ_MODEL, modelFast: env.GROQ_MODEL_FAST ?? DEFAULT_GROQ_MODEL },
     anthropic: { apiKey: env.ANTHROPIC_API_KEY ?? "", baseUrl: env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com", modelBest: env.MODEL_BEST ?? "claude-opus-5-5", modelFast: env.MODEL_FAST ?? "claude-sonnet-5-5" },
   };
 }

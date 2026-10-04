@@ -6,7 +6,7 @@ import path from "node:path";
 
 const keys = JSON.parse(readFileSync(path.join(__dirname, ".keys.json"), "utf8")) as { licensePub: string; licensePem: string; receiptPub: string; receiptPem: string };
 export const ADMIN_TOKEN = "e2e-admin-token-".padEnd(40, "x");
-export const PORT = 8787, UPSTREAM_PORT = 8790;
+export const PORT = 8787, UPSTREAM_PORT = 8790, GROQ_PORT = 8791;
 export const URL_ = `http://127.0.0.1:${PORT}`;
 
 /** The real, built licensing server (server/dist/server.mjs) as a child process behind "a proxy" (loopback HTTP). */
@@ -22,7 +22,7 @@ export class RealServer {
     this.child = spawn(process.execPath, ["--no-warnings", path.resolve(__dirname, "../../server/dist/server.mjs")], {
       env: { PATH: process.env.PATH, PORT: String(PORT), BEHIND_PROXY: "1", ADMIN_TOKEN, DB_PATH: path.join(this.dir, "db.sqlite"), LICENSE_KEYS_FILE: path.join(this.dir, "keys.json"),
         RECEIPT_KEY_FILE: path.join(this.dir, "receipt.pem"), RECEIPT_KID: "e2e-rcp", LICENSE_SIGNING_KEY_FILE: path.join(this.dir, "issuer.pem"), LICENSE_SIGNING_KID: "e2e-lic",
-        ANTHROPIC_API_KEY: "sk-e2e", ANTHROPIC_BASE_URL: `http://127.0.0.1:${this.upstreamPort}` }, stdio: ["ignore", "ignore", "inherit"],
+        ANTHROPIC_API_KEY: "sk-e2e", ANTHROPIC_BASE_URL: `http://127.0.0.1:${this.upstreamPort}`, GROQ_BASE_URL: `http://127.0.0.1:${GROQ_PORT}` }, stdio: ["ignore", "ignore", "inherit"],
     });
     for (let i = 0; i < 100; i++) { try { if ((await fetch(URL_ + "/healthz")).ok) return; } catch { /* not up yet */ } await new Promise((r) => setTimeout(r, 100)); }
     throw new Error("server did not start");
@@ -53,5 +53,24 @@ export async function startUpstream(pages: unknown[]) {
     });
   });
   await new Promise<void>((r) => s.listen(UPSTREAM_PORT, "127.0.0.1", r));
+  return { calls, close: () => new Promise<void>((r) => s.close(() => r())) };
+}
+
+/** Stub of Groq's OpenAI-compatible API: GET /models and POST /chat/completions (records the request). */
+export async function startGroqUpstream(pages: unknown[]) {
+  const calls: { method: string; url: string; auth?: string; model?: string; images: number }[] = [];
+  const s: Server = createServer((q, r) => {
+    const ch: Buffer[] = []; q.on("data", (c) => ch.push(c));
+    q.on("end", () => {
+      const raw = Buffer.concat(ch).toString(); const b = raw ? JSON.parse(raw) : {};
+      const images = (b.messages?.[1]?.content ?? []).filter((c: any) => c.type === "image_url").length;
+      calls.push({ method: q.method ?? "", url: q.url ?? "", auth: q.headers.authorization, model: b.model, images });
+      r.writeHead(200, { "content-type": "application/json" });
+      if (q.method === "GET") return void r.end(JSON.stringify({ data: [{ id: "e2e-vision-a" }, { id: "e2e-vision-b" }] }));
+      const n = calls.filter((c) => c.method === "POST").length;
+      r.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(pages[(n - 1) % pages.length]) }, finish_reason: "stop" }], usage: { prompt_tokens: 900, completion_tokens: 250 } }));
+    });
+  });
+  await new Promise<void>((r) => s.listen(GROQ_PORT, "127.0.0.1", r));
   return { calls, close: () => new Promise<void>((r) => s.close(() => r())) };
 }

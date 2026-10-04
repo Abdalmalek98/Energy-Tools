@@ -42,7 +42,7 @@ Copy `licensing/keys/production.json` (your *public* licence keys) to `/etc/lsr/
 sudo cp .env.example /etc/lsr/server.env && sudo nano /etc/lsr/server.env   # fill ADMIN_TOKEN (openssl rand -hex 32), ANTHROPIC_API_KEY, paths
 sudo chown root:lsr /etc/lsr/server.env && sudo chmod 640 /etc/lsr/server.env
 ```
-Keep `BEHIND_PROXY=1`. The server then listens on `127.0.0.1:8443` only and **refuses to start without TLS unless that flag is set**. Optionally set `LICENSE_SIGNING_KEY_FILE` to let the License Manager create codes; the recommended way is to sign on your own PC and *import*.
+Set `ANTHROPIC_API_KEY` **or** `GROQ_API_KEY` (and `PROVIDER=groq`) here, or leave them empty and paste the key in the License Manager (*Reading provider*) after the server is running. Keep `BEHIND_PROXY=1`. The server then listens on `127.0.0.1:8443` only and **refuses to start without TLS unless that flag is set**. Optionally set `LICENSE_SIGNING_KEY_FILE` to let the License Manager create codes; the recommended way is to sign on your own PC and *import*.
 
 ## 4. Run it
 ```bash

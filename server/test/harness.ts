@@ -20,6 +20,8 @@ export async function startHarness(over: Partial<Config> = {}): Promise<Harness>
   const issuer = makeKey("lic-1"); void issuer;
   const cfg: Config = {
     product: PRODUCT, dbPath: ":memory:", adminToken: ADMIN, licenseKeys: [licKey.entry], receiptKey: privateKey, receiptKid: "srv-1", graceHours: 168, allowDevKeys: false, trustProxy: false,
+    provider: "anthropic", allowInsecureUpstream: true,
+    groq: { apiKey: "", baseUrl: "https://api.groq.com/openai/v1", modelBest: "groq-best", modelFast: "groq-fast" },
     anthropic: { apiKey: "sk-test", baseUrl: "http://127.0.0.1:1", modelBest: "claude-opus-5-5", modelFast: "claude-sonnet-5-5" }, ...over,
   };
   const app = createApp(cfg, openDb(":memory:"));
@@ -44,10 +46,18 @@ export const verify = (h: Harness, receipt: string, nonce: string, licenseId?: s
 export const activateBody = (code: string, comps: Comps, nonceV = nonce()) => ({ code, machine: { comps }, appVersion: "1.0.0", nonce: nonceV });
 export { T0 };
 
-/** A tiny fake Anthropic Messages API. */
-export async function startUpstream(reply: (body: any) => { status: number; body: unknown }) {
-  const calls: any[] = [];
-  const s = createServer((q, r) => { const ch: Buffer[] = []; q.on("data", (c) => ch.push(c)); q.on("end", () => { const b = JSON.parse(Buffer.concat(ch).toString() || "{}"); calls.push({ b, key: q.headers["x-api-key"] }); const x = reply(b); r.writeHead(x.status, { "content-type": "application/json" }); r.end(JSON.stringify(x.body)); }); });
+/** A tiny fake model provider (Anthropic Messages API or Groq/OpenAI-style): records every request. */
+export async function startUpstream(reply: (body: any, req: { url: string; method: string }) => { status: number; body: unknown }) {
+  const calls: { b: any; key: string | undefined; auth: string | undefined; url: string; method: string }[] = [];
+  const s = createServer((q, r) => {
+    const ch: Buffer[] = []; q.on("data", (c) => ch.push(c));
+    q.on("end", () => {
+      const raw = Buffer.concat(ch).toString(); const b = raw ? JSON.parse(raw) : {};
+      calls.push({ b, key: q.headers["x-api-key"] as string | undefined, auth: q.headers.authorization, url: q.url ?? "", method: q.method ?? "" });
+      const x = reply(b, { url: q.url ?? "", method: q.method ?? "" });
+      r.writeHead(x.status, { "content-type": "application/json" }); r.end(JSON.stringify(x.body));
+    });
+  });
   await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
   return { url: `http://127.0.0.1:${(s.address() as AddressInfo).port}`, calls, close: () => new Promise<void>((r) => s.close(() => r())) };
 }

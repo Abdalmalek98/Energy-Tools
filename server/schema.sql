@@ -81,3 +81,10 @@ CREATE TABLE IF NOT EXISTS rate_limits (
   count        INTEGER NOT NULL,
   PRIMARY KEY (key, window_start)
 );
+
+-- Server settings edited from the License Manager (reading provider, models, API keys). Keys are stored ENCRYPTED (AES-256-GCM, key derived from the server's receipt key file), never in clear text.
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);

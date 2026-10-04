@@ -13,14 +13,15 @@ input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--bd);bor
 .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.grow{flex:1}
 .tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;border:1px solid var(--bd)}.active{color:var(--ok)}.revoked,.expired{color:var(--bad)}.suspended{color:var(--warn)}
 .mut{color:var(--mut);font-size:13px}.err{color:var(--bad);min-height:1.4em}.code{font:600 13px ui-monospace,Consolas,monospace;word-break:break-all;background:var(--bg);padding:8px;border-radius:8px}
-table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:4px 6px;border-bottom:1px solid var(--bd)}[hidden]{display:none!important}
+label.radio{display:inline-flex;align-items:center;gap:6px;margin:0 18px 0 0;color:var(--fg);font-size:15px}label.radio input{width:auto}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.small{font-size:12px}table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:4px 6px;border-bottom:1px solid var(--bd)}[hidden]{display:none!important}
 </style></head><body>
 <header><h1>License Manager</h1><button id="out" hidden>Sign out</button></header>
 <main>
-<section id="login" class="card"><label>Admin token</label><input id="tok" type="password" autocomplete="off"><p class="err" id="lerr"></p><button class="p" id="go">Sign in</button>
+<section id="login" class="card"><label for="tok">Admin token</label><input id="tok" type="password" autocomplete="off"><p class="err" id="lerr"></p><button class="p" id="go">Sign in</button>
 <p class="mut">The token is only kept in this page's memory.</p></section>
 <section id="app" hidden>
  <div class="row" style="margin-bottom:12px"><button class="p" id="new">+ New licence</button><button id="reload">Refresh</button><button id="aud">Audit log</button></div>
+ <div id="provider" class="card"></div>
  <div id="form" class="card" hidden></div><div id="list"></div><div id="detail" class="card" hidden></div>
 </section></main>
 <script nonce="__NONCE__">
@@ -29,8 +30,24 @@ const $=id=>document.getElementById(id);let token=null;
 function h(tag,attrs,...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==="class")e.className=v;else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);else if(v!==false&&v!=null)e.setAttribute(k,v===true?"":v)}for(const k of kids.flat())if(k!=null)e.append(k.nodeType?k:document.createTextNode(String(k)));return e}
 const fmt=t=>t?String(t).replace("T"," ").slice(0,16)+"Z":"—";
 async function api(path,method="GET",body){const r=await fetch("/admin/v1"+path,{method,headers:{authorization:"Bearer "+token,"content-type":"application/json"},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.message||r.status);return j}
-$("go").onclick=async()=>{token=$("tok").value;$("tok").value="";try{await api("/info");$("login").hidden=true;$("app").hidden=false;$("out").hidden=false;load()}catch(e){token=null;$("lerr").textContent=e.message}};
+$("go").onclick=async()=>{token=$("tok").value;$("tok").value="";try{await api("/info");$("login").hidden=true;$("app").hidden=false;$("out").hidden=false;load();provider()}catch(e){token=null;$("lerr").textContent=e.message}};
 $("out").onclick=()=>{token=null;$("app").hidden=true;$("out").hidden=true;$("login").hidden=false};$("reload").onclick=load;$("new").onclick=form;$("aud").onclick=()=>audit();
+let flash="";
+async function provider(){const box=$("provider");let p;try{p=await api("/provider")}catch(e){box.replaceChildren(h("p",{class:"err"},e.message));return}
+ const radio=(v,l)=>h("label",{class:"radio"},h("input",{type:"radio",name:"prov",value:v,checked:p.provider===v}),l);
+ const key=(name)=>h("input",{type:"password",autocomplete:"off",placeholder:p[name].configured?"saved "+p[name].keyHint+" (type to replace)":"paste API key",id:"key-"+name});
+ const mb=(name)=>h("input",{id:"mb-"+name,list:"models-"+name,value:p[name].modelBest||""}),mf=(name)=>h("input",{id:"mf-"+name,list:"models-"+name,value:p[name].modelFast||""});
+ const out=h("p",{class:"mut",role:"status"},flash),err=h("p",{class:"err"});flash="";
+ const sel=()=>box.querySelector("input[name=prov]:checked").value;
+ const section=(name,title)=>h("div",{style:"margin-top:12px"},h("b",{},title),h("span",{class:"mut"}," · "+(p[name].configured?"key "+p[name].keyHint+" ("+(p[name].source==="stored"?"saved here":"from server settings")+")":"no key")),
+  h("label",{for:"key-"+name},"API key (write-only, never shown again)"),key(name),h("div",{class:"grid2"},h("div",{},h("label",{for:"mb-"+name},"Model for “Best accuracy”"),mb(name)),h("div",{},h("label",{for:"mf-"+name},"Model for “Faster”"),mf(name))),h("datalist",{id:"models-"+name}),
+  h("div",{class:"row",style:"margin-top:8px"},h("button",{onclick:async()=>{out.textContent="Testing…";err.textContent="";try{const r=await api("/provider/test","POST",{provider:name});out.textContent=(r.ok?"✓ ":"✗ ")+r.message+(r.models.length?" ("+r.models.length+" models listed in the model boxes)":"");const dl=$("models-"+name);dl.replaceChildren(...r.models.map(m=>h("option",{value:m})))}catch(e){err.textContent=e.message}}},"Test connection"),
+   p[name].source==="stored"?h("button",{class:"d",onclick:async()=>{if(!confirm("Remove the saved "+title+" key from this server?"))return;try{await api("/provider","POST",{[name]:{clearKey:true}});flash="Saved key removed.";provider()}catch(e){err.textContent=e.message}}},"Remove saved key"):null));
+ box.replaceChildren(h("b",{},"Reading provider"),h("p",{class:"mut"},"Which AI service reads the handwriting. The key stays on this server (stored encrypted) and is never sent to customers' apps."),
+  h("div",{},radio("anthropic","Anthropic (Claude)"),radio("groq","Groq")),section("anthropic","Anthropic"),section("groq","Groq"),
+  h("p",{class:"mut small"},"Groq: choose a model that accepts images. “Test connection” lists the models your key can use. Reading quality differs between providers: compare with a few real sheets before switching customers over."),
+  h("div",{class:"row"},h("button",{class:"p",onclick:async()=>{err.textContent="";out.textContent="";const body={provider:sel()};for(const name of["anthropic","groq"]){const k=$("key-"+name).value.trim();body[name]={modelBest:$("mb-"+name).value,modelFast:$("mf-"+name).value};if(k)body[name].apiKey=k}
+   try{await api("/provider","POST",body);flash="Saved.";provider()}catch(e){err.textContent=e.message}}},"Save"),out),err)}
 async function load(){const{licenses}=await api("/licenses");const l=$("list");l.replaceChildren(...licenses.map(c=>h("div",{class:"card"},
  h("div",{class:"row"},h("b",{class:"grow"},c.customer+(c.company?" · "+c.company:"")),h("span",{class:"tag "+c.state},c.state),h("span",{class:"tag"},c.offline?"offline":"online")),
  h("div",{class:"mut"},c.license_id+" · ends "+(c.effective_expires_at?fmt(c.effective_expires_at):"never")+" · machines "+c.active_count+"/"+c.max_activations+" · last seen "+fmt(c.last_seen)),

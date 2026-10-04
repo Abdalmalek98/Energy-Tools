@@ -3,7 +3,8 @@
  * Your own local licence for testing and the accuracy run: runs the REAL licensing server on this PC with throw-away keys and
  * creates a code for you. (Developer tool: needs Node. Production keys and the production server are separate; see docs/LICENSING.md.)
  *
- *   ANTHROPIC_API_KEY=sk-ant-... node scripts/local-licence.mjs       real reading with your key
+ *   ANTHROPIC_API_KEY=sk-ant-... node scripts/local-licence.mjs       real reading with your Claude key
+ *   GROQ_API_KEY=gsk_... node scripts/local-licence.mjs               real reading through Groq (optional GROQ_MODEL_BEST / GROQ_MODEL_FAST)
  *   node scripts/local-licence.mjs --stub                              fake model (no key, no cost): tests the plumbing
  * Then: node app/scripts/build-local.mjs --run   (the app, trusting your local keys)    npm run accuracy
  */
@@ -31,7 +32,7 @@ if (!cfg) {
   writeFileSync(path.join(dir, "keys.json"), JSON.stringify({ license: [{ kid: "local-lic", publicKey: cfg.licensePub }] }));
   writeFileSync(CFG, JSON.stringify(cfg, null, 2), { mode: 0o600 });
 }
-if (!process.env.ANTHROPIC_API_KEY && !stub) { console.error("Set ANTHROPIC_API_KEY (your key from console.anthropic.com) or use --stub."); process.exit(1); }
+if (!process.env.ANTHROPIC_API_KEY && !process.env.GROQ_API_KEY && !stub) { console.error("Set ANTHROPIC_API_KEY (console.anthropic.com) or GROQ_API_KEY (console.groq.com), or use --stub."); process.exit(1); }
 execSync("npm run build -w server", { cwd: root, stdio: "ignore" });
 
 const kids = [];
@@ -42,7 +43,8 @@ if (stub) {   // fake Anthropic Messages API
 const srv = spawn(process.execPath, ["--no-warnings", path.join(root, "server/dist/server.mjs")], { stdio: ["ignore", "ignore", "inherit"], env: {
   PATH: process.env.PATH, PORT: String(PORT), BEHIND_PROXY: "1", ADMIN_TOKEN: cfg.adminToken, DB_PATH: path.join(dir, "licensing.sqlite"), LICENSE_KEYS_FILE: path.join(dir, "keys.json"),
   RECEIPT_KEY_FILE: path.join(dir, "receipt-key.pem"), RECEIPT_KID: "local-rcp", LICENSE_SIGNING_KEY_FILE: path.join(dir, "license-key.pem"), LICENSE_SIGNING_KID: "local-lic",
-  ANTHROPIC_API_KEY: stub ? "sk-stub" : process.env.ANTHROPIC_API_KEY, ...(stub ? { ANTHROPIC_BASE_URL: `http://127.0.0.1:${STUB}` } : {}) } });
+  ...(process.env.GROQ_API_KEY && !stub ? { PROVIDER: "groq", GROQ_API_KEY: process.env.GROQ_API_KEY, ...(process.env.GROQ_MODEL_BEST ? { GROQ_MODEL_BEST: process.env.GROQ_MODEL_BEST, GROQ_MODEL_FAST: process.env.GROQ_MODEL_FAST ?? process.env.GROQ_MODEL_BEST } : {}) } : {}),
+  ANTHROPIC_API_KEY: stub ? "sk-stub" : process.env.ANTHROPIC_API_KEY ?? "", ...(stub ? { ANTHROPIC_BASE_URL: `http://127.0.0.1:${STUB}` } : {}) } });
 kids.push(srv);
 const stop = () => { kids.forEach((k) => k.kill()); process.exit(0); };
 process.on("SIGINT", stop); process.on("SIGTERM", stop);
@@ -52,5 +54,5 @@ if (!cfg.code) {
   const j = await r.json(); if (!r.ok) { console.error(j.message); stop(); }
   cfg.code = j.code; writeFileSync(CFG, JSON.stringify(cfg, null, 2), { mode: 0o600 });
 }
-console.log(`\n=== Your local licence ===\nServer:           ${cfg.url}   (License Manager: ${cfg.url}/manager, token in .local-licence/config.json)\nActivation code:  ${cfg.code}\n\nRun the app:      node app/scripts/build-local.mjs --run\nAccuracy report:  npm run accuracy      (second terminal, this one stays open)\n${stub ? "STUB MODE: no real reading." : "Real reading with your Anthropic key."} Ctrl+C stops.\n`);
+console.log(`\n=== Your local licence ===\nServer:           ${cfg.url}   (License Manager: ${cfg.url}/manager, token in .local-licence/config.json)\nActivation code:  ${cfg.code}\n\nRun the app:      node app/scripts/build-local.mjs --run\nAccuracy report:  npm run accuracy      (second terminal, this one stays open)\n${stub ? "STUB MODE: no real reading." : process.env.GROQ_API_KEY ? "Real reading through Groq." : "Real reading with your Anthropic key."} Ctrl+C stops.\n`);
 await new Promise(() => {});

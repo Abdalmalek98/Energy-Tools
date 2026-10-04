@@ -10,6 +10,7 @@
 | Editing the licence file | DPAPI/AES-GCM authentication fails → file discarded, user asked to activate again. | app |
 | Setting the clock back | Judged against the latest time ever seen; server time repairs glitches. | app |
 | Brute-forcing the admin API | Constant-time token compare, per-IP rate limits and a failed-attempt limit, audit log. | server |
+| Provider API keys (Anthropic/Groq) | Live only on the server: from environment variables or saved in the License Manager, where they are stored AES-256-GCM encrypted with a key derived from the server's receipt key file; the admin API never returns them (last 4 characters only); changes are audited by field name, never value; provider base URLs must be https. | server |
 | Leaked private keys | Key ids + keyring allow rotation and withdrawal (docs/LICENSING.md §4). | all |
 
 ## Honest limits

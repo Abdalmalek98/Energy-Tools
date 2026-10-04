@@ -3,7 +3,7 @@ import ExcelJS from "exceljs";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { RealServer, startUpstream } from "./realServer";
+import { ADMIN_TOKEN, RealServer, startGroqUpstream, startUpstream, URL_ } from "./realServer";
 
 const APP = path.resolve(__dirname, "..");
 const REF = path.resolve(APP, "../reference");
@@ -286,4 +286,50 @@ test("errors from file dialogs and disk are shown to the user, not swallowed", a
   await page.getByTestId("new-project").click(); await page.getByTestId("add-files").click();
   await expect(page.getByTestId("project-note")).toContainText("Couldn’t open the selected files");
   await app.close();
+});
+
+test("Reading provider: connect a Groq API key in the License Manager, test it, and read pages through Groq in the real app", async () => {
+  const groq = await startGroqUpstream(await modelPages());
+  try {
+    // 1. the owner uses the License Manager page in a browser
+    // (Electron's own Chromium is used as the "browser": no separate browser download is needed)
+    const owner = await launch(tmp());
+    const winP = owner.app.waitForEvent("window");
+    // a separate session partition: the app's own CSP hook must not apply to the owner's "browser"
+    await owner.app.evaluate(({ BrowserWindow }, url) => { const w = new BrowserWindow({ width: 1100, height: 900, webPreferences: { partition: "owner-browser" } }); void w.loadURL(url); }, URL_ + "/manager");
+    const mp = await winP; await mp.waitForLoadState("domcontentloaded");
+    await mp.getByLabel("Admin token").fill(ADMIN_TOKEN); await mp.getByRole("button", { name: "Sign in" }).click();
+    await expect(mp.getByText("Reading provider")).toBeVisible();
+    await expect(mp.locator("input[name=prov][value=anthropic]")).toBeChecked();          // default
+    await mp.locator("input[name=prov][value=groq]").check();
+    await mp.locator("#key-groq").fill("gsk_E2E_KEY_1234567890");
+    await mp.locator("#mb-groq").fill("e2e-vision-a"); await mp.locator("#mf-groq").fill("e2e-vision-b");
+    await mp.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(mp.getByText("Saved.")).toBeVisible();
+    await expect(mp.getByText("saved here")).toBeVisible();                                // key hint shown, the key itself never
+    expect(await mp.content()).not.toContain("gsk_E2E_KEY_1234567890");
+    await mp.getByRole("button", { name: "Test connection" }).nth(1).click();
+    await expect(mp.getByText(/✓ Key accepted/)).toBeVisible();
+    await expect(mp.locator("#models-groq option")).toHaveCount(2);
+    if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await mp.screenshot({ path: path.join(SHOTS, "08-manager-provider.png") }); }
+    expect(groq.calls.find((c) => c.method === "GET")).toMatchObject({ url: "/models", auth: "Bearer gsk_E2E_KEY_1234567890" });
+    await owner.app.close();
+
+    // 2. the customer's app now reads through Groq (the app itself is unchanged)
+    const lic = await srv.create();
+    const pdf = path.join(tmp(), "g.pdf"); copyFileSync(path.join(REF, "samples", "Al-Fatiha_Center_-_________________.pdf"), pdf);
+    const { app, page } = await launch(tmp(), { LSR_E2E_OPEN: JSON.stringify([pdf]) });
+    await activate(page, lic.code);
+    await page.getByTestId("new-project").click(); await page.getByTestId("add-files").click();
+    await expect(page.locator('[data-testid^="page-"]')).toHaveCount(3);
+    await page.getByTestId("read-pages").click(); await expect(page.getByTestId("page-done")).toHaveCount(3);
+    const reads = groq.calls.filter((c) => c.method === "POST");
+    expect(reads).toHaveLength(3);
+    for (const c of reads) { expect(c.url).toBe("/chat/completions"); expect(c.auth).toBe("Bearer gsk_E2E_KEY_1234567890"); expect(c.model).toBe("e2e-vision-a"); expect(c.images).toBe(3); }
+    expect(upstream.calls).toHaveLength(0);                                                // Anthropic was not used
+    await app.close();
+  } finally {
+    await srv.admin("/provider", { provider: "anthropic", groq: { clearKey: true } });     // leave the shared test server as we found it
+    await groq.close();
+  }
 });
