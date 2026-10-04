@@ -10,7 +10,7 @@ const GATE = path.join(ROOT, "scripts/release-gate.sh");
 const ok = process.platform !== "win32" && spawnSync("bash", ["-c", "openssl version | grep -q 'OpenSSL 3'"]).status === 0;
 const d = ok ? describe : describe.skip;
 
-const gen = (cwd: string, args: string[]) => JSON.parse(spawnSync("bash", [path.join(ROOT, "scripts/gen-license-key.sh"), ...args], { cwd, encoding: "utf8" }).stdout.trim().split("\n").pop()!);
+const gen = (cwd: string, args: string[]) => JSON.parse(spawnSync("bash", [path.join(ROOT, "scripts/gen-license-key.sh"), ...args], { cwd, encoding: "utf8", env: { PATH: process.env.PATH!, HOME: cwd } }).stdout.trim().split("\n").pop()!);
 const gate = (env: Record<string, string>, ...args: string[]) => spawnSync("bash", [GATE, ...args], { encoding: "utf8", env: { PATH: process.env.PATH!, ...env } });
 const goodEnv = (keys: string) => ({ LSR_KEYS_FILE: keys, LSR_SERVICE_URL: "https://licensing.test.invalid", LSR_RELEASE: "1" });
 

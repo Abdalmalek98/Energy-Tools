@@ -2,7 +2,7 @@
 # Creates a signed activation code ("LSR1.<payload>.<signature>") with ONLY bash + OpenSSL 3 (works in Git Bash for Windows).
 #
 # Usage:
-#   scripts/offline-license.sh --key private-keys/license-key.pem --kid lic-1 \
+#   bash scripts/offline-license.sh --key ~/lsr-private-keys/license-key.pem --kid lic-1 \
 #       --customer "Jane Doe" --company "Acme Energy" --machine-id MID1.xxxxx \
 #       [--days 365 | --expires 2027-12-31 | --perpetual] [--not-before 2026-10-01] \
 #       [--max-activations 1] [--pages-per-month 500] [--features '{"key":"value"}'] \

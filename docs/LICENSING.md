@@ -27,15 +27,25 @@ How activation codes work, how you (the owner) create them, and what to do when 
 
 ## 2. Step by step in Git Bash (no Node.js needed)
 
-You need Git Bash (comes with Git for Windows) and OpenSSL 3 (included). Open Git Bash **in the project folder** (download the repository ZIP from GitHub and unzip it, or `git clone`).
+You need Git Bash (comes with Git for Windows) and OpenSSL 3 (included with it).
+
+**Step 0: get the project files and go into the folder.** Either way works:
+* *With git:* open Git Bash and run
+  ```bash
+  git clone https://github.com/Abdalmalek98/Energy-Tools.git
+  cd Energy-Tools
+  ```
+* *Or download the ZIP:* https://github.com/Abdalmalek98/Energy-Tools/archive/refs/heads/claude/gracious-cray-j6dz3v.zip, unzip it, then open Git Bash and `cd` into the unzipped folder. Git Bash writes `C:\Users\You\Downloads\...` as `/c/Users/You/Downloads/...`, for example `cd /c/Users/You/Downloads/Energy-Tools-claude-gracious-cray-j6dz3v`. (Some unzip tools create a folder inside a folder: `cd` into the one that contains `scripts`.)
+
+Check you are in the right place: `ls scripts` must list `gen-license-key.sh`, `offline-license.sh`, `license-admin.sh` and `release-gate.sh`. If it says "No such file or directory", you are in the wrong folder: use `pwd` to see where you are and `cd` to the folder that contains `scripts`.
 
 **Step 1: generate your signing key (once).**
 ```bash
 bash scripts/gen-license-key.sh
 ```
-It creates `private-keys/license-key.pem` and prints one line like
+It saves your private key in **`~/lsr-private-keys/license-key.pem`** (the `lsr-private-keys` folder in your Windows user folder, e.g. `C:\Users\You\lsr-private-keys`; the script prints the exact path) and prints one line like
 `{"kid":"lic-1","publicKey":"MCowBQYDK2VwAyEA…"}`.
-* **Back up `private-keys/license-key.pem`** (password manager attachment or encrypted USB stick). If you lose it you cannot make new codes for this key.
+* **Back up `~/lsr-private-keys/license-key.pem`** (password manager attachment or encrypted USB stick). If you lose it you cannot make new codes for this key.
 * **Never** paste, e-mail or upload the `.pem` file. It is git-ignored.
 
 **Step 2: send me ONLY the public key line** (the `{"kid":…}` line). It is safe to share. I add it to `licensing/keys/production.json` and build a release that trusts it. If you ever paste a private key by mistake, treat it as leaked and rotate it (section 4).
@@ -47,13 +57,15 @@ It creates `private-keys/license-key.pem` and prints one line like
 **Step 5: create an offline activation code for that computer.**
 ```bash
 bash scripts/offline-license.sh \
-  --key private-keys/license-key.pem --kid lic-1 \
+  --key ~/lsr-private-keys/license-key.pem --kid lic-1 \
   --customer "Jane Doe" --company "Acme Energy" \
   --machine-id "MID1.eyJ2IjoxLC…(paste the whole Machine ID)" \
   --days 365
 ```
 Details are printed on screen (stderr); the **code is the last line** (stdout). Select and copy it. Variants: `--expires 2027-12-31`, `--perpetual`, `--pages-per-month 500`, `--online` (no Machine ID needed).
 To save only the code to a file: `bash scripts/offline-license.sh … > code.txt` (the details still appear on screen).
+
+**If a script says a directory/file is not found**, run `pwd` and `ls scripts` (see Step 0). If it says it cannot create the key folder, pick another place: `bash scripts/gen-license-key.sh --out /c/Users/You/Documents/lsr-keys/license-key.pem`.
 
 The script refuses to run (and prints nothing) if your private key does not match the public key built into the app for that `kid`, and it verifies its own signature before printing.
 
@@ -71,7 +83,7 @@ The script refuses to run (and prints nothing) if your private key does not matc
 ## 4. Keys: rotation and leaks
 
 ### Planned rotation (add a second key, retire the first)
-1. `bash scripts/gen-license-key.sh --kid lic-2 --out private-keys/license-key-2.pem` → send me the public key line.
+1. `bash scripts/gen-license-key.sh --kid lic-2 --out ~/lsr-private-keys/license-key-2.pem` → send me the public key line.
 2. It is **added next to** `lic-1` in `licensing/keys/production.json` (both listed) and the server's `LICENSE_KEYS_FILE`. Ship the new app version. Old codes (signed by `lic-1`) keep working; new codes are signed with `--kid lic-2`.
 3. When every customer is on the new version and old codes have been re-issued or have expired, mark `lic-1` as withdrawn: `{"kid":"lic-1","publicKey":"…","revoked":true}` (or set `"notAfter"`), and release again. An app that lacks a key reports "unknown key" and asks to update.
 The server's **receipt** key rotates the same way (`--role receipt --kid srv-2`, add to `receipt`, switch `RECEIPT_KID`).

@@ -23,7 +23,7 @@ function setup() {
   const entry = JSON.parse(gen.out.trim().split("\n").pop()!) as { kid: string; publicKey: string };
   const keysFile = path.join(dir, "keys.json");
   writeFileSync(keysFile, JSON.stringify({ license: [entry], receipt: [] }, null, 2));
-  const key = path.join(dir, "private-keys/license-key.pem");
+  const key = path.join(dir, "lsr-private-keys/license-key.pem");
   return { dir, entry, keysFile, key, keys: { license: [entry], receipt: [] } };
 }
 const base = (s: ReturnType<typeof setup>, extra: string[]) => ["--key", s.key, "--kid", s.entry.kid, "--keys-file", s.keysFile, "--customer", "Jane Doe", "--company", "Acme", ...extra];
@@ -31,14 +31,21 @@ const client = (s: ReturnType<typeof setup>, comps = machine(), http: Http = noN
   new LicenseClient({ keys: { license: s.keys.license, receipt: receiptKeys }, product: PRODUCT, releaseBuild: true, appVersion: "1", collect: () => comps, http, store: new AesFileStore(path.join(s.dir, "lic.dat"), "s") });
 
 d("scripts/gen-license-key.sh", () => {
-  it("creates a private key (0600), prints only the public key JSON on stdout, refuses to overwrite", () => {
+  it("works when the working directory is unrelated or does not even exist", () => {
+    const home = mkdtempSync(path.join(tmpdir(), "home-"));
+    const r = spawnSync("bash", [path.join(SCRIPTS, "gen-license-key.sh")], { cwd: tmpdir(), encoding: "utf8", env: { PATH: process.env.PATH!, HOME: home } });
+    expect(r.status).toBe(0); expect(readFileSync(path.join(home, "lsr-private-keys/license-key.pem"), "utf8")).toContain("PRIVATE KEY");
+    const bad = spawnSync("bash", [path.join(SCRIPTS, "gen-license-key.sh"), "--out", "/proc/nope/key.pem"], { encoding: "utf8", env: { PATH: process.env.PATH!, HOME: home } });
+    expect(bad.status).toBe(5); expect(bad.stderr).toContain("Cannot create the folder"); expect(bad.stderr).toContain("--out");
+  });
+  it("creates a private key in ~/lsr-private-keys (0600) from ANY working directory, prints only the public key JSON on stdout, refuses to overwrite", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "gen-"));
     const r = sh("gen-license-key.sh", [], dir);
     expect(r.status).toBe(0);
     const line = r.out.trim(); expect(line.split("\n")).toHaveLength(1);
     expect(JSON.parse(line)).toMatchObject({ kid: "lic-1" }); expect(line).not.toContain("PRIVATE");
-    expect(readFileSync(path.join(dir, "private-keys/license-key.pem"), "utf8")).toContain("BEGIN PRIVATE KEY");
-    expect(r.err).toContain("NEVER paste it"); expect(sh("gen-license-key.sh", [], dir).status).toBe(2);
+    expect(readFileSync(path.join(dir, "lsr-private-keys/license-key.pem"), "utf8")).toContain("BEGIN PRIVATE KEY");
+    expect(r.err).toContain("NEVER paste it"); expect(r.err).toContain(path.join(dir, "lsr-private-keys")); expect(sh("gen-license-key.sh", [], dir).status).toBe(2);
     expect(JSON.parse(sh("gen-license-key.sh", ["--role", "receipt"], dir).out.trim())).toMatchObject({ kid: "srv-1" });
     expect(JSON.parse(sh("gen-license-key.sh", ["--dev"], dir).out.trim())).toMatchObject({ kid: "dev-lic-1", dev: true });
   });

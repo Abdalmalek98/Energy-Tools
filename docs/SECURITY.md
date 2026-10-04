@@ -26,7 +26,7 @@
 * **Privacy**: the server stores only the licence id, app version and *hashed* hardware components, plus the customer/company text you typed into the licence and usage counts. No file contents or page images are stored (images are forwarded to the model and discarded).
 * **Transport**: HTTPS only; the server refuses to start without TLS unless it is explicitly behind a TLS proxy (`BEHIND_PROXY=1`, loopback only).
 * **Renderer isolation**: `contextIsolation`, no `nodeIntegration`, sandbox, strict CSP; the window has no network; all HTTP is in the main process.
-* `.gitignore` excludes `*.pem`, `private-keys/`, `.env`; `.env.example` contains no secrets.
+* `.gitignore` excludes `*.pem`, `private-keys/`, `.env` (and the key generator saves private keys outside the project, in `~/lsr-private-keys`); `.env.example` contains no secrets.
 
 ## Reporting
 Found a problem? Tell the owner privately; rotate keys per docs/LICENSING.md §4 if a secret may be exposed.
