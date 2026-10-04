@@ -130,3 +130,45 @@ d("scripts/offline-license.sh", () => {
     } finally { await h.close(); }
   });
 });
+
+d("scripts/lsr.sh (pulls the tools from GitHub, here from a local stand-in for the raw URL)", () => {
+  const { cpSync, mkdirSync, existsSync: exists } = require("node:fs");
+  function remote(keysJson: unknown) {
+    const dir = mkdtempSync(path.join(tmpdir(), "remote-")); mkdirSync(path.join(dir, "scripts")); mkdirSync(path.join(dir, "licensing/keys"), { recursive: true });
+    for (const f of ["gen-license-key.sh", "offline-license.sh", "license-admin.sh", "lsr.sh"]) cpSync(path.join(SCRIPTS, f), path.join(dir, "scripts", f));
+    writeFileSync(path.join(dir, "licensing/keys/production.json"), JSON.stringify(keysJson, null, 2));
+    return dir;
+  }
+  /** runs lsr.sh the way a user does: piped into bash (curl … | bash -s -- args) */
+  const lsr = (home: string, base: string, args: string[]) =>
+    spawnSync("bash", ["-s", "--", ...args], { input: readFileSync(path.join(SCRIPTS, "lsr.sh"), "utf8"), encoding: "utf8", env: { PATH: process.env.PATH!, HOME: home, LSR_RAW_BASE: `file://${base}` }, cwd: tmpdir() });
+
+  it("downloads the tools + keys, makes a code with the key from ~/lsr-private-keys, saves it, and the real client accepts it", async () => {
+    const home = mkdtempSync(path.join(tmpdir(), "home-"));
+    const gen = spawnSync("bash", [path.join(SCRIPTS, "gen-license-key.sh")], { encoding: "utf8", env: { PATH: process.env.PATH!, HOME: home } });
+    const entry = JSON.parse(gen.stdout.trim().split("\n").pop()!);
+    const base = remote({ license: [entry], receipt: [] });
+    const r = lsr(home, base, ["code", "--customer", "Jane Doe", "--company", "Acme", "--machine-id", encodeMachineId(machine()), "--days", "30"]);
+    expect(r.status).toBe(0);
+    const code = r.stdout.trim().split("\n").pop()!;
+    expect(code).toMatch(/^LSR1\./); expect(r.stderr).toContain("Tools downloaded from"); expect(r.stderr).toContain("Saved to:");
+    expect(exists(path.join(home, "lsr-tools/scripts/offline-license.sh"))).toBe(true);                // fetched, not taken from the working directory
+    const saved = require("node:fs").readdirSync(path.join(home, "lsr-codes")); expect(saved).toHaveLength(1);
+    expect(readFileSync(path.join(home, "lsr-codes", saved[0]), "utf8").trim()).toBe(code);
+    const c = new LicenseClient({ keys: { license: [entry], receipt: [] }, product: PRODUCT, releaseBuild: true, appVersion: "1", collect: () => machine(), http: noNetwork, store: new AesFileStore(path.join(home, "lic.dat"), "s") });
+    expect(await c.activate(code)).toEqual({ ok: true });
+  });
+  it("tells you what to do when the key is missing, when it does not match the published public key, or when GitHub is unreachable", () => {
+    const home = mkdtempSync(path.join(tmpdir(), "home-")); const base = remote({ license: [{ kid: "lic-1", publicKey: "MCowBQYDK2VwAyEAA+1cUZW7O/tv+EGG8hYAaeXhwTTLz4owKBsfJpbn0xU=" }], receipt: [] });
+    const args = ["code", "--customer", "X", "--machine-id", encodeMachineId(machine()), "--days", "30"];
+    const none = lsr(home, base, args); expect(none.status).toBe(1); expect(none.stderr).toContain("private key was not found"); expect(none.stderr).toContain("keygen");
+    spawnSync("bash", [path.join(SCRIPTS, "gen-license-key.sh")], { env: { PATH: process.env.PATH!, HOME: home } });      // a DIFFERENT key than the published one
+    const mismatch = lsr(home, base, args); expect(mismatch.status).toBe(3); expect(mismatch.stderr).toContain("does NOT match"); expect(mismatch.stdout).toBe("");
+    const gone = lsr(home, path.join(tmpdir(), "no-such-remote"), args); expect(gone.status).toBe(1); expect(gone.stderr).toContain("Could not download");
+  });
+  it("keygen goes through the same download path", () => {
+    const home = mkdtempSync(path.join(tmpdir(), "home-")); const base = remote({ license: [], receipt: [] });
+    const r = lsr(home, base, ["keygen"]); expect(r.status).toBe(0); expect(JSON.parse(r.stdout.trim().split("\n").pop()!)).toMatchObject({ kid: "lic-1" });
+    expect(exists(path.join(home, "lsr-private-keys/license-key.pem"))).toBe(true);
+  });
+});
