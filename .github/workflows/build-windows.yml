@@ -13,6 +13,10 @@ on:
 
 concurrency: { group: "build-${{ github.ref }}", cancel-in-progress: true }
 
+# needed to publish the build as a GitHub Release (direct download link, no login, no zip)
+permissions:
+  contents: write
+
 jobs:
   windows:
     runs-on: windows-latest
@@ -61,7 +65,11 @@ jobs:
           cp app/release/LightingSurveyReader-Setup-*.exe "out-files/Lighting Survey Reader Setup.exe"
           cp app/release/LightingSurveyReader-*-portable.exe "out-files/Lighting Survey Reader.exe"
           cp app/release/latest.yml out-files/ 2>/dev/null || true
-          ls -la out-files
+          # space-free names for the public release (GitHub turns spaces into dots in asset names)
+          mkdir -p release-files
+          cp "out-files/Lighting Survey Reader Setup.exe" release-files/LightingSurveyReader-Setup.exe
+          cp "out-files/Lighting Survey Reader.exe" release-files/LightingSurveyReader-Portable.exe
+          ls -la out-files release-files
       - name: Sign (only when a certificate is configured)
         if: env.CSC_LINK != ''
         shell: bash
@@ -71,6 +79,15 @@ jobs:
           name: ${{ env.IS_RELEASE == 'true' && 'windows-release' || 'windows-PREVIEW-not-for-customers' }}
           path: out-files/*
           if-no-files-found: error
+      - name: Publish the PREVIEW build as a pre-release (direct download link)
+        if: env.IS_RELEASE != 'true' && github.ref_type == 'branch'
+        shell: bash
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          gh release delete preview-latest --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create preview-latest release-files/*.exe --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "PREVIEW build (testing only, not for customers)" \
+            --notes "Built from commit ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Contains the DEVELOPMENT keyring in addition to the production licence key, so it is for testing only. Replaced by every new push. Windows may show a SmartScreen warning (unsigned): More info, then Run anyway."
       - name: Publish to the releases repo (tags only)
         if: github.ref_type == 'tag' && env.RELEASES_TOKEN != ''
         shell: bash
