@@ -189,5 +189,36 @@ export function buildFindings(a: AnalysisResult, bms: ParsedBms): Finding[] {
       });
     }
   }
+  // 11 Hourly weather (only when the customer supplied hourly weather data)
+  if (a.weather) {
+    const w = a.weather;
+    const sel = w.selected;
+    if (!sel) {
+      out.push({ id: 'weather-hourly', status: 'Review', title: 'Hourly weather baseline', text: w.notes.filter((n) => /Only|hardly|could not/.test(n)).join(' ') || 'The hourly weather regression could not be computed.', numbers: [{ label: 'Hours used', value: String(w.usedHours) }] });
+    } else {
+      const m = sel.energy;
+      const unit = sel.id === 'enthalpy' ? 'kJ/kg' : '°C';
+      const bins = w.tempBins.filter((b) => b.hours >= 10 && Number.isFinite(b.kwPerTR));
+      let degr: number | null = null;
+      if (bins.length >= 3) {
+        const mild = bins[0], hot = bins[bins.length - 1];
+        degr = (hot.kwPerTR / mild.kwPerTR - 1) * 100;
+      }
+      const status: Status = degr !== null && degr > 25 ? 'Action' : !m.guideline14.pass || (degr !== null && degr > 15) ? 'Review' : 'OK';
+      out.push({
+        id: 'weather-hourly', status, title: 'Hourly weather baseline',
+        text: `Best hourly model: ${sel.label.toLowerCase()} (R² ${fmt(m.r2, 2)}, CV(RMSE) ${fmt(m.cv, 1)} %, ${m.guideline14.pass ? 'Guideline 14 PASS' : 'Guideline 14 FAIL'}). ` +
+          (sel.id === 'temperature+humidity' ? `Plant power changes by ${fmt0(m.coefs[1].value)} kW per °C and ${fmt(m.coefs[2].value, 1)} kW per %RH.` : `Plant power changes by ${fmt(m.coefs[1].value, 1)} kW per ${unit}.`) +
+          (degr !== null ? ` Efficiency in the hottest hours (${bins[bins.length - 1].label}) is ${fmt(degr, 0)} % ${degr >= 0 ? 'worse' : 'better'} than in the mildest (${bins[0].label}).` : '') +
+          (w.normalised ? ` At mean weather the plant runs at ${fmt(w.normalised.kwPerTR, 3)} kW/TR.` : ''),
+        numbers: [
+          { label: 'Hours used', value: String(w.usedHours) }, { label: 'R²', value: fmt(m.r2, 3) }, { label: 'CV(RMSE)', value: `${fmt(m.cv, 1)} %` }, { label: 'NMBE', value: `${fmt(m.nmbe, 2)} %` },
+          ...(w.correlations.temperature !== null ? [{ label: 'r (kW, T)', value: fmt(w.correlations.temperature, 2) }] : []),
+          ...(w.correlations.enthalpy !== null ? [{ label: 'r (kW, h)', value: fmt(w.correlations.enthalpy, 2) }] : []),
+          ...(w.correlations.humidity !== null ? [{ label: 'r (kW, RH)', value: fmt(w.correlations.humidity, 2) }] : []),
+        ],
+      });
+    }
+  }
   return out;
 }

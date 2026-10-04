@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { AnalysisResult, CddData, ColumnMapping, LoggerAnalysis, LoggerData, ParsedBms, RawTable, Settings } from '../types';
+import type { AnalysisResult, WeatherHourlyData, CddData, ColumnMapping, LoggerAnalysis, LoggerData, ParsedBms, RawTable, Settings } from '../types';
 import { DEFAULT_SETTINGS, mergeSettings } from '../settings/defaults';
 import { autoMapTable, detectUnitSettings } from '../analysis/bms';
 import { runPipeline, suggestChiller } from '../analysis/pipeline';
@@ -8,6 +8,7 @@ import { parseFlukeFile, SUPPORTED_EXTENSIONS } from '../fluke/parse';
 import { FlukeError } from '../fluke/errors';
 import { decodeText, parseTable } from '../utils/csv';
 import { parseCddBytes } from '../analysis/cdd';
+import { parseWeatherBytes } from '../analysis/weather';
 import { openProject, saveProject, ProjectError, type ProjectState } from '../storage/project';
 import { pickFiles, saveFile, isTauri, readFromPath, writeToPath, type PickedFile } from '../storage/files';
 import { loadRecent, loadTheme, pushRecent, saveTheme, type RecentProject } from '../storage/local';
@@ -34,6 +35,7 @@ interface Store {
   importBms: () => Promise<void>; importBmsFile: (f: PickedFile) => Promise<void>; clearBms: () => void;
   importLoggers: () => Promise<void>; importLoggerFiles: (f: PickedFile[]) => Promise<void>; removeLogger: (i: number) => void; setLoggerChiller: (i: number, c: string) => void;
   loggerError: UiError | null; dismissLoggerError: () => void;
+  weather: WeatherHourlyData | null; importWeather: () => Promise<void>; importWeatherFile: (f: PickedFile) => Promise<void>; clearWeather: () => void; weatherError: string | null;
   cdd: CddData | null; importCdd: () => Promise<void>; importCddFile: (f: PickedFile) => Promise<void>; clearCdd: () => void; cddError: string | null;
   exportExcel: () => Promise<void>; exporting: boolean;
   project: { name: string; path?: string; dirty: boolean }; recent: RecentProject[];
@@ -64,6 +66,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [loggerError, setLoggerError] = useState<UiError | null>(null);
   const [cdd, setCdd] = useState<CddData | null>(null);
   const [cddError, setCddError] = useState<string | null>(null);
+  const [weather, setWeather] = useState<WeatherHourlyData | null>(null);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
   const [project, setProject] = useState<{ name: string; path?: string; dirty: boolean }>({ name: 'Untitled project', dirty: false });
   const [recent, setRecent] = useState<RecentProject[]>(loadRecent());
   const [license, setLicense] = useState<LicenseStatus | null>(null);
@@ -94,7 +98,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const setTheme = (t: ThemeMode) => { setThemeState(t); saveTheme(t); };
 
   // ---- derived analysis (a pure function of the inputs → independent of upload order)
-  const pipeline = useMemo(() => runPipeline({ table, mapping, settings, bmsFileName, loggers, cdd }), [table, mapping, settings, bmsFileName, loggers, cdd]);
+  const pipeline = useMemo(() => runPipeline({ table, mapping, settings, bmsFileName, loggers, cdd, weather }), [table, mapping, settings, bmsFileName, loggers, cdd, weather]);
   const loggerAnalyses = useMemo(() => loggers.map((entry) => ({ entry, analysis: analyzeLogger(entry.data) })), [loggers]);
 
   // ---- BMS
@@ -181,6 +185,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [importCddFile]);
   const clearCdd = () => { setCdd(null); setCddError(null); dirty(); };
 
+  // ---- hourly weather (temperature, optional humidity / enthalpy)
+  const importWeatherFile = useCallback(async (f: PickedFile) => {
+    try {
+      const d = parseWeatherBytes(f.name, f.bytes, settings);
+      setWeather(d);
+      setWeatherError(null);
+      dirty();
+      toast(`Loaded ${d.hours.length.toLocaleString('en-US')} hour(s) of weather from ${f.name}`);
+    } catch (e) {
+      setWeatherError(e instanceof Error ? e.message : String(e));
+    }
+  }, [settings, dirty, toast]);
+  const importWeather = useCallback(async () => {
+    const f = (await pickFiles({ extensions: ['csv', 'txt', 'tsv'], title: 'Import hourly weather data' }))[0];
+    if (f) await importWeatherFile(f);
+  }, [importWeatherFile]);
+  const clearWeather = () => { setWeather(null); setWeatherError(null); dirty(); };
+
   // ---- settings
   const updateSettings = (p: Partial<Settings>) => { setSettings((s) => ({ ...s, ...p })); dirty(); };
   const resetSettings = () => { setSettings(DEFAULT_SETTINGS); dirty(); };
@@ -202,17 +224,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ---- projects
   const snapshot = useCallback((): ProjectState => ({
-    name: project.name, settings, mapping, bmsFileName, bmsTable: table, loggers, cdd,
+    name: project.name, settings, mapping, bmsFileName, bmsTable: table, loggers, cdd, weather,
     results: pipeline.analysis ? { kpis: pipeline.analysis.kpis, exclusions: pipeline.analysis.exclusions, chillers: pipeline.analysis.chillers.map((c) => ({ id: c.id, kwPerTR: c.kwPerTR, status: c.status })), findings: pipeline.analysis.findings.map((f) => ({ id: f.id, status: f.status, title: f.title })) } : null,
-  }), [project.name, settings, mapping, bmsFileName, table, loggers, cdd, pipeline.analysis]);
+  }), [project.name, settings, mapping, bmsFileName, table, loggers, cdd, weather, pipeline.analysis]);
 
   const applyProject = (p: ProjectState, path?: string) => {
-    setSettings(p.settings); setTable(p.bmsTable); setBmsFileName(p.bmsFileName); setMappingState(p.mapping); setLoggers(p.loggers); setCdd(p.cdd ?? null); setCddError(null);
+    setSettings(p.settings); setTable(p.bmsTable); setBmsFileName(p.bmsFileName); setMappingState(p.mapping); setLoggers(p.loggers); setCdd(p.cdd ?? null); setCddError(null); setWeather(p.weather ?? null); setWeatherError(null);
     setProject({ name: p.name, path, dirty: false });
     if (path) setRecent(pushRecent({ name: p.name, path, openedAt: new Date().toISOString() }));
   };
   const newProject = () => {
-    setSettings(DEFAULT_SETTINGS); setTable(null); setBmsFileName(undefined); setMappingState({}); setLoggers([]); setLoggerError(null); setCdd(null); setCddError(null);
+    setSettings(DEFAULT_SETTINGS); setTable(null); setBmsFileName(undefined); setMappingState({}); setLoggers([]); setLoggerError(null); setCdd(null); setCddError(null); setWeather(null); setWeatherError(null);
     setProject({ name: 'Untitled project', dirty: false }); setPage('dashboard');
   };
   const loadBytes = async (bytes: Uint8Array, path?: string) => {
@@ -305,6 +327,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     page, setPage, theme, setTheme, settings, updateSettings, resetSettings,
     table, bmsFileName, mapping, setMapping, autoMapNow, loggers, loggerAnalyses, parsed: pipeline.parsed, analysis: pipeline.analysis, analysisError: pipeline.error,
     importBms: guard(importBms), importBmsFile, clearBms, importLoggers: guard(importLoggers), importLoggerFiles, removeLogger, setLoggerChiller, loggerError, dismissLoggerError: () => setLoggerError(null),
+    weather, importWeather: guard(importWeather), importWeatherFile, clearWeather, weatherError,
     cdd, importCdd: guard(importCdd), importCddFile, clearCdd, cddError,
     exportExcel, exporting, project, recent, newProject, openProjectDialog: guard(openProjectDialog), openRecent, saveCurrent: guard(saveCurrent), saveAs: guard(saveAs), exportBackup: guard(exportBackup), importBackup: guard(importBackup),
     license, appInfo, licenseBusy, activate, checkLicense, deactivate, refreshLicense, toasts, toast,

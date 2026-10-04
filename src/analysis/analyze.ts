@@ -1,4 +1,5 @@
 import type {
+  WeatherHourlyData,
   CddData,
   AnalysisResult, BinRow, ChillerRow, ChillerSummary, ParsedBms, RegressionResult, Row, Settings,
 } from '../types';
@@ -11,6 +12,8 @@ import { mean, percentile } from '../utils/stats';
 import { fmtDate } from '../utils/format';
 import { buildFindings } from './findings';
 import { analyzeCdd } from './cddAnalysis';
+import { analyzeHourlyWeather } from './weatherAnalysis';
+import { weatherToCdd } from './weather';
 
 const fin = (a: number[]) => a.filter(Number.isFinite);
 
@@ -44,6 +47,8 @@ export interface AnalysisInput {
   bmsFileName?: string;
   /** Customer-supplied cooling degree days (or daily temperatures) */
   cdd?: CddData | null;
+  /** Customer-supplied hourly weather (temperature, optional humidity / enthalpy) */
+  weather?: WeatherHourlyData | null;
 }
 
 export function analyze(input: AnalysisInput): AnalysisResult {
@@ -128,17 +133,23 @@ export function analyze(input: AnalysisInput): AnalysisResult {
     firstDate: fmtDate(firstTs), lastDate: fmtDate(lastTs),
     sources: { bmsFile: input.bmsFileName, loggers: attachments.map((a) => a.logger.fileName) },
     cdd: null,
+    weather: null,
   };
-  if (input.cdd && kept.length) {
-    // logged hours per day from ALL timestamps, so hours with the plant off still count as covered
-    const seen = new Map<number, Set<number>>();
-    for (const r of rows) {
-      if (!Number.isFinite(r.ts)) continue;
-      const d = Math.floor(r.ts / 86400000) * 86400000;
-      (seen.get(d) ?? seen.set(d, new Set()).get(d)!).add(r.ts);
+  const cddInput = input.cdd ?? (input.weather ? weatherToCdd(input.weather, s) : null);
+  if ((cddInput || input.weather) && kept.length) {
+    // logged time per day / hour from ALL timestamps, so hours with the plant off still count as covered
+    const stamps = new Set<number>();
+    for (const r of rows) if (Number.isFinite(r.ts)) stamps.add(r.ts);
+    const perDay = new Map<number, number>();
+    const perHour = new Map<number, number>();
+    for (const ts of stamps) {
+      const d = Math.floor(ts / 86400000) * 86400000;
+      const h = Math.floor(ts / 3600000) * 3600000;
+      perDay.set(d, (perDay.get(d) ?? 0) + dtH);
+      perHour.set(h, (perHour.get(h) ?? 0) + dtH);
     }
-    const observed = new Map([...seen].map(([d, set]) => [d, set.size * dtH]));
-    result.cdd = analyzeCdd(plant, dtH, observed, input.cdd, s);
+    if (cddInput) result.cdd = analyzeCdd(plant, dtH, perDay, cddInput, s);
+    if (input.weather) result.weather = analyzeHourlyWeather(plant, dtH, perHour, input.weather, s);
   }
   result.findings = kept.length ? buildFindings(result, bms) : [];
   return result;

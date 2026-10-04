@@ -25,6 +25,9 @@ export const DEFAULT_SETTINGS: Settings = {
   cddBaseTemp: 18.3,
   typicalAnnualCdd: 0,
   cddMinCoverage: 0.9,
+  weatherHourEnding: false,
+  weatherIncludeOffHours: false,
+  atmPressureKPa: 101.325,
   chillerOverrides: {},
 };
 

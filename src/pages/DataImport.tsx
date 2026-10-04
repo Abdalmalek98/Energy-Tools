@@ -6,7 +6,7 @@ import { fmt0 } from '../utils/format';
 const DELIM: Record<string, string> = { ',': 'comma', ';': 'semicolon', '\t': 'tab' };
 
 export function DataImportPage() {
-  const { cdd, cddError, importCdd, clearCdd, settings, table, bmsFileName, importBms, importBmsFile, clearBms, parsed, analysisError, setPage, project, newProject, openProjectDialog, saveCurrent, saveAs, exportBackup, importBackup, recent, openRecent } = useStore();
+  const { weather, weatherError, importWeather, clearWeather, cdd, cddError, importCdd, clearCdd, settings, table, bmsFileName, importBms, importBmsFile, clearBms, parsed, analysisError, setPage, project, newProject, openProjectDialog, saveCurrent, saveAs, exportBackup, importBackup, recent, openRecent } = useStore();
   const [over, setOver] = useState(false);
   const onDrop = async (e: DragEvent) => {
     e.preventDefault();
@@ -55,6 +55,19 @@ export function DataImportPage() {
           </div>
         ) : <button className="btn" onClick={importCdd}>Import CDD / weather file…</button>}
         {cdd && cdd.notes.length > 0 && <ul className="hint">{cdd.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+      </Card>
+      <Card title="Weather – hourly data (optional)" actions={weather ? <button className="btn sm danger" onClick={clearWeather}>Remove</button> : undefined}>
+        <p style={{ marginTop: 0 }}>Hourly outdoor conditions: a time column and <b>temperature</b> (required), plus <b>relative humidity</b> and <b>enthalpy</b> (both optional; with humidity but no enthalpy column the enthalpy is computed). The analysis relates hourly plant power and cooling load to temperature, enthalpy and humidity, and also derives daily CDD from the temperatures.</p>
+        {weatherError && <div style={{ marginBottom: 10 }}><Banner kind="error" title="Cannot use this weather file. "><pre>{weatherError}</pre></Banner></div>}
+        {weather ? (
+          <div className="row" style={{ gap: 22 }}>
+            <span><b>{weather.fileName}</b></span><span><b className="num">{weather.hours.length.toLocaleString('en-US')}</b> hours</span>
+            <span>{new Date(weather.hours[0].ts).toISOString().slice(0, 10)} → {new Date(weather.hours[weather.hours.length - 1].ts).toISOString().slice(0, 10)}</span>
+            <span>temperature ✓</span><span>humidity {weather.hasHumidity ? '✓' : '—'}</span><span>enthalpy {weather.hasEnthalpy ? (weather.enthalpyComputed ? '✓ (computed)' : '✓') : '—'}</span>
+            <button className="btn sm" onClick={importWeather}>Replace…</button>
+          </div>
+        ) : <button className="btn" onClick={importWeather}>Import hourly weather file…</button>}
+        {weather && weather.notes.length > 0 && <ul className="hint">{weather.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
       </Card>
       <Card title="Project">
         <div className="row">

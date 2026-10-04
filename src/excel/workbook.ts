@@ -40,7 +40,7 @@ export async function buildWorkbook(input: ExportInput): Promise<ExportOutput> {
     chartsSheet.set(0, 0, 'Charts', styles.title);
     chartsSheet.set(1, 0, 'Native Excel charts. Source ranges are on the "Chart Data" sheet.', styles.sub);
     chartsSheet.widths = Array(20).fill(11);
-    sheets.push(summary, chartsSheet, findingsSheet(a), chillersSheet(a), regressionSheet(a), ...(a.cdd ? [cddSheet(a)] : []), loadProfileSheet(a), ph.sheet, chillerDataSheet(a), cd);
+    sheets.push(summary, chartsSheet, findingsSheet(a), chillersSheet(a), regressionSheet(a), ...(a.cdd ? [cddSheet(a)] : []), ...(a.weather ? [weatherSheet(a)] : []), loadProfileSheet(a), ph.sheet, chillerDataSheet(a), cd);
     if (loggerAnalyses.length) {
       sheets.push(loggerSummarySheet(loggerAnalyses), loggerDataSheet(loggerAnalyses.map((x) => x.data), loggerAnalyses.map((x) => x.an)));
     }
@@ -426,8 +426,92 @@ function chartsFor(a: AnalysisResult, cd: Sheet): ChartSpec[] {
       ], anchor: pos(charts.length) });
     col += 3;
   }
+  // 9-11: customer hourly weather – plant kW and kW/TR against temperature, kW against enthalpy
+  const wx = a.weather;
+  if (wx && wx.selected) {
+    const u = thin(wx.rows.filter((r) => r.used && r.tempC !== null), 1200);
+    put(col, 'Temp °C', u.map((r) => r.tempC as number), '0.0'); put(col + 1, 'kW', u.map((r) => r.kW), '#,##0'); put(col + 2, 'kW/TR', u.map((r) => (Number.isFinite(r.kwPerTR) ? r.kwPerTR : '') as number), '0.000');
+    charts.push({ title: 'Hourly plant kW vs outdoor temperature', type: 'scatter', xTitle: 'Dry-bulb temperature (°C)', yTitle: 'kW', xFormat: '0', yFormat: '#,##0', yMin: 0,
+      series: [{ name: 'Hours', xRef: ref(col, u.length), yRef: ref(col + 1, u.length), xVals: u.map((r) => r.tempC as number), yVals: u.map((r) => r.kW), color: PAL[0] }], anchor: pos(charts.length) });
+    charts.push({ title: 'Hourly plant kW/TR vs outdoor temperature', type: 'scatter', xTitle: 'Dry-bulb temperature (°C)', yTitle: 'kW/TR', xFormat: '0', yFormat: '0.00', yMin: 0,
+      series: [{ name: 'Hours', xRef: ref(col, u.length), yRef: ref(col + 2, u.length), xVals: u.map((r) => r.tempC as number), yVals: u.map((r) => r.kwPerTR), color: PAL[3] }], anchor: pos(charts.length) });
+    col += 3;
+    const e = u.filter((r) => r.enthalpy !== null);
+    if (e.length > 3) {
+      put(col, 'Enthalpy kJ/kg', e.map((r) => r.enthalpy as number), '0.0'); put(col + 1, 'kW (enthalpy)', e.map((r) => r.kW), '#,##0');
+      charts.push({ title: 'Hourly plant kW vs enthalpy', type: 'scatter', xTitle: 'Enthalpy (kJ/kg)', yTitle: 'kW', xFormat: '0', yFormat: '#,##0', yMin: 0,
+        series: [{ name: 'Hours', xRef: ref(col, e.length), yRef: ref(col + 1, e.length), xVals: e.map((r) => r.enthalpy as number), yVals: e.map((r) => r.kW), color: PAL[1] }], anchor: pos(charts.length) });
+      col += 2;
+    }
+  }
   cd.widths = Array(col + 1).fill(14);
   return charts;
+}
+
+// ---------------------------------------------------------------- hourly weather sheet
+function weatherSheet(a: AnalysisResult) {
+  const w = a.weather!;
+  const s = new Sheet('Weather Hourly');
+  s.set(0, 0, 'Hourly weather – plant power vs temperature, enthalpy and humidity', styles.title);
+  s.set(1, 0, `Weather file: ${w.fileName}. Hourly data ⇒ Guideline 14 limits CV ≤ 30 %, |NMBE| ≤ 10 %. Only hours with the plant running are used unless set otherwise.`, styles.sub);
+  const sel = w.selected;
+  let r = 3;
+  if (sel) {
+    s.head(r++, 0, ['Predictors', 'n', 'R²', 'Adj R²', 'RMSE kW', 'CV(RMSE) %', 'NMBE %', 'Guideline 14', 'Selected']);
+    for (const c of w.candidates) {
+      const m = c.energy;
+      s.set(r, 0, c.label, styles.label); s.set(r, 1, m.n, styles.num, '0'); s.set(r, 2, m.r2, styles.num, '0.0000'); s.set(r, 3, m.adjR2, styles.num, '0.0000');
+      s.set(r, 4, m.rmse, styles.num, '0.0'); s.set(r, 5, m.cv, styles.num, '0.00'); s.set(r, 6, m.nmbe, styles.num, '0.000');
+      const v = m.guideline14.pass ? 'PASS' : 'FAIL';
+      s.set(r, 7, v, chip(v)); s.set(r, 8, c === sel ? '◄' : '', styles.body);
+      r++;
+    }
+    r++;
+    // selected-model coefficients – fixed cells referenced by the hourly formulas below
+    const coefRow = r;
+    s.set(r++, 0, `Selected model: ${sel.label}   (kW = b0 + b1·${sel.id === 'enthalpy' ? 'h' : 'T'}${sel.id === 'temperature+humidity' ? ' + b2·RH' : ''})`, styles.section);
+    s.set(r - 1, 1, '', styles.section); s.set(r - 1, 2, '', styles.section);
+    sel.energy.coefs.forEach((k, i) => { s.set(r, 0, i === 0 ? 'b0 (intercept)' : `b${i} (${k.name})`, styles.label); s.set(r, 1, k.value, styles.num, '0.000000'); s.set(r, 2, `95 % CI ${k.ciLow.toPrecision(4)} … ${k.ciHigh.toPrecision(4)}`, styles.body); r++; });
+    if (w.normalised && w.reference) {
+      s.set(r, 0, 'Plant kW at mean weather', styles.label); s.set(r, 1, w.normalised.kW, styles.num, '#,##0'); r++;
+      s.set(r, 0, 'Cooling load at mean weather (TR)', styles.label); s.set(r, 1, w.normalised.tr, styles.num, '#,##0'); r++;
+      s.set(r, 0, 'Plant kW/TR at mean weather', styles.label); s.set(r, 1, { f: `IF(B${r}>0,B${r - 1}/B${r},"")`, v: w.normalised.kwPerTR }, styles.num, '0.000'); r++;
+    }
+    r++;
+    const binBlock = (title: string, bins: NonNullable<typeof w.enthalpyBins>) => {
+      s.set(r++, 0, title, styles.section); s.set(r - 1, 1, '', styles.section); s.set(r - 1, 2, '', styles.section);
+      s.head(r++, 0, ['Bin', 'Hours', 'Avg kW', 'Avg TR', 'kW/TR']);
+      for (const b of bins) {
+        const x = r + 1;
+        s.set(r, 0, b.label, styles.label); s.set(r, 1, b.hours, styles.num, '#,##0'); s.set(r, 2, b.avgKW, styles.num, '#,##0'); s.set(r, 3, b.avgTR, styles.num, '#,##0');
+        s.set(r, 4, { f: `IF(D${x}>0,C${x}/D${x},"")`, v: b.avgTR > 0 ? b.avgKW / b.avgTR : '' }, styles.num, '0.000');
+        r++;
+      }
+      r++;
+    };
+    binBlock('Temperature bins (2 °C)', w.tempBins);
+    if (w.enthalpyBins) binBlock('Enthalpy bins (5 kJ/kg)', w.enthalpyBins);
+    // hourly table
+    const h0 = r;
+    s.head(h0, 0, ['Hour', 'Temp °C', 'RH %', 'Enthalpy kJ/kg', 'Plant kW', 'Plant TR', 'kW/TR', 'Used', 'Expected kW', 'Residual kW']);
+    w.rows.forEach((d, i) => {
+      const rr = h0 + 1 + i;
+      const x = rr + 1;
+      s.set(rr, 0, toExcelDate(d.ts), styles.num, DATE_FMT);
+      s.set(rr, 1, d.tempC ?? '', styles.num, '0.0'); s.set(rr, 2, d.rh ?? '', styles.num, '0'); s.set(rr, 3, d.enthalpy ?? '', styles.num, '0.0');
+      s.set(rr, 4, d.kW, styles.num, '#,##0'); s.set(rr, 5, d.tr, styles.num, '#,##0');
+      s.set(rr, 6, { f: `IF(F${x}>0,E${x}/F${x},"")`, v: d.tr > 0 ? d.kW / d.tr : '' }, styles.num, '0.000');
+      s.set(rr, 7, d.used ? 1 : 0, styles.num, '0');
+      const b0 = `$B$${coefRow + 2}`, b1 = `$B$${coefRow + 3}`, b2 = `$B$${coefRow + 4}`;
+      const expr = sel.id === 'enthalpy' ? `${b0}+${b1}*D${x}` : sel.id === 'temperature' ? `${b0}+${b1}*B${x}` : `${b0}+${b1}*B${x}+${b2}*C${x}`;
+      s.set(rr, 8, { f: `IF(H${x}=1,${expr},"")`, v: d.expectedKW ?? '' }, styles.num, '#,##0');
+      s.set(rr, 9, { f: `IF(H${x}=1,E${x}-I${x},"")`, v: d.expectedKW === null ? '' : d.kW - d.expectedKW }, styles.num, '#,##0');
+    });
+  } else {
+    for (const n of w.notes) s.set(r++, 0, n, styles.wrap);
+  }
+  s.widths = [34, 11, 12, 14, 12, 12, 10, 14, 12, 12];
+  return s;
 }
 
 // ---------------------------------------------------------------- CDD sheet

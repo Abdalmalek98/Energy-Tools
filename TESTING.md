@@ -12,6 +12,7 @@ node --test license-manager/test/*.test.js
 | `tests/merge.test.ts` | logger↔BMS merge window/nearest fallback, both upload orders, logged-period-only, logger removal |
 | `tests/excel.test.ts` | sheets, native chart parts, cached formula values, **LibreOffice recalculation of a cache-free copy: every formula value matches, no errors** |
 | `tests/cdd.test.ts` | CDD/temperature file import (units, hourly aggregation, errors), daily roll-up, exact regression recovery (kWh = 2880 + 576·CDD), normalised kW/TR, typical-year annual figures, partial/off/missing days, base-temperature recompute, weather finding and drift, LibreOffice recalculation of the CDD sheet |
+| `tests/weather.test.ts` | psychrometric enthalpy against chart values, hourly weather import (temperature only, + humidity, + enthalpy, units, hour-ending, errors), exact coefficient recovery, model selection (humidity only when it truly matters), bins, off-hour handling, partial overlap, CDD derivation, Excel sheet/charts and LibreOffice recalculation |
 | `tests/dlog.test.ts` | data-logger CSV quirks (blank time column, US dates, RTD probes, GPM, single-chiller logger attach), load-column auto-detection |
 | `tests/project.test.ts` | `.cpa` round trip, backup, tamper detection |
 | `tests/acceptance.test.ts` | original Fluke acceptance figures — runs only when `sample-data/LC5_CH3__SN_62934227__260628_1539_trend.txt` exists (skipped otherwise; reported as skipped) |

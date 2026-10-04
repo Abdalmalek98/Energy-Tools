@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import type { CddData, ColumnMapping, LoggerData, RawTable, Settings } from '../types';
+import type { CddData, ColumnMapping, LoggerData, RawTable, Settings, WeatherHourlyData } from '../types';
 import { mergeSettings, APP_VERSION } from '../settings/defaults';
 
 /**
@@ -22,6 +22,7 @@ export interface ProjectState {
   bmsTable: RawTable | null;
   loggers: { data: LoggerData; chiller: string }[];
   cdd?: CddData | null;
+  weather?: WeatherHourlyData | null;
   results?: unknown;
 }
 
@@ -54,6 +55,7 @@ export async function saveProject(p: ProjectState, kind: 'project' | 'backup' = 
   if (p.bmsTable) files['bms.json'] = enc(p.bmsTable);
   if (p.loggers.length) files['loggers.json'] = enc(p.loggers);
   if (p.cdd) files['cdd.json'] = enc(p.cdd);
+  if (p.weather) files['weather.json'] = enc(p.weather);
   const hashes: Record<string, string> = {};
   for (const [n, d] of Object.entries(files)) {
     zip.file(n, d);
@@ -88,6 +90,7 @@ export async function openProject(bytes: Uint8Array): Promise<{ project: Project
   const bmsTable = ((await read('bms.json')) ?? null) as RawTable | null;
   const loggers = ((await read('loggers.json')) ?? []) as ProjectState['loggers'];
   const cdd = ((await read('cdd.json')) ?? null) as CddData | null;
+  const weather = ((await read('weather.json')) ?? null) as WeatherHourlyData | null;
   const results = await read('results.json');
-  return { manifest, project: { name: manifest.name, settings, mapping: mp.mapping ?? {}, bmsFileName: mp.bmsFileName, bmsTable, loggers, cdd, results } };
+  return { manifest, project: { name: manifest.name, settings, mapping: mp.mapping ?? {}, bmsFileName: mp.bmsFileName, bmsTable, loggers, cdd, weather, results } };
 }

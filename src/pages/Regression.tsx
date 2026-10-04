@@ -5,6 +5,7 @@ import { XYChart } from '../components/charts';
 import type { RegressionModel, RegressionResult } from '../types';
 import { fmt } from '../utils/format';
 import { CddPanel } from './CddPanel';
+import { WeatherPanel } from './WeatherPanel';
 
 function ModelDetail({ m, selected }: { m: RegressionModel; selected: boolean }) {
   return (
@@ -30,10 +31,20 @@ export function RegressionPage() {
   if (!reg) return null;
   const tabs = (
     <div className="tabs" role="tablist">
-      {subjects.map((s) => <button key={s.subject} role="tab" aria-selected={sel === s.subject || (sel === 'CDD' ? false : s.subject === reg.subject)} className="tab" onClick={() => setSel(s.subject)}>{s.subject === 'Plant' ? 'Plant' : s.subject}</button>)}
+      {subjects.map((s) => <button key={s.subject} role="tab" aria-selected={sel === s.subject || (sel === 'CDD' || sel === 'WEATHER' ? false : s.subject === reg.subject)} className="tab" onClick={() => setSel(s.subject)}>{s.subject === 'Plant' ? 'Plant' : s.subject}</button>)}
+      {a.weather && <button role="tab" aria-selected={sel === 'WEATHER'} className="tab" onClick={() => setSel('WEATHER')}>Weather (hourly)</button>}
       {a.cdd && <button role="tab" aria-selected={sel === 'CDD'} className="tab" onClick={() => setSel('CDD')}>Weather (CDD)</button>}
     </div>
   );
+  if (sel === 'WEATHER' && a.weather) {
+    return (
+      <>
+        <PageHead title="Regression" subtitle="Hourly plant power and cooling load against outdoor temperature, enthalpy and humidity, with Guideline 14 hourly limits." />
+        {tabs}
+        <WeatherPanel a={a} />
+      </>
+    );
+  }
   if (sel === 'CDD' && a.cdd) {
     return (
       <>

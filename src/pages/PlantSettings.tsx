@@ -56,6 +56,13 @@ export function PlantSettingsPage() {
           <NumberField label="Minimum logged share of a day" value={s.cddMinCoverage} step="0.05" onChange={(v) => set('cddMinCoverage', v)} hint="days below this are left out of the regression" />
         </div>
       </Card>
+      <Card title="Hourly weather">
+        <div className="form-grid">
+          <Field label="Time stamps mean"><select value={s.weatherHourEnding ? 'end' : 'start'} onChange={(e) => set('weatherHourEnding', e.target.value === 'end')}><option value="start">Start of the hour (13:00 = 13:00–14:00)</option><option value="end">End of the hour (14:00 = 13:00–14:00)</option></select></Field>
+          <Field label="Plant-off hours"><label className="check"><input type="checkbox" checked={s.weatherIncludeOffHours} onChange={(e) => set('weatherIncludeOffHours', e.target.checked)} /> include logged off hours (zero energy)</label></Field>
+          <NumberField label="Atmospheric pressure (kPa)" value={s.atmPressureKPa} onChange={(v) => set('atmPressureKPa', v)} hint="used to compute enthalpy from temperature + humidity; 101.325 = sea level" />
+        </div>
+      </Card>
       {ids.length > 0 && (
         <Card title="Per-chiller ratings (optional overrides)">
           <div className="table-wrap"><table>

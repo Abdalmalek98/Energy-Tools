@@ -36,6 +36,12 @@ export interface Settings {
   typicalAnnualCdd: number;
   /** Minimum share of a day that must be logged for it to enter the CDD regression. */
   cddMinCoverage: number;
+  /** Hourly weather: timestamps mark the END of the hour (e.g. EPW/TMY "hour 1" = 00:00–01:00). */
+  weatherHourEnding: boolean;
+  /** Include logged hours with the plant off (zero energy) in the hourly weather regression. */
+  weatherIncludeOffHours: boolean;
+  /** Atmospheric pressure (kPa) for computing enthalpy from temperature + humidity. */
+  atmPressureKPa: number;
   chillerOverrides: Record<string, { ratedTR?: number; ratedKwPerTR?: number }>;
 }
 
@@ -242,6 +248,8 @@ export interface AnalysisResult {
   sources: { bmsFile?: string; loggers: string[] };
   /** Present when the customer uploaded cooling-degree-day (or daily temperature) data. */
   cdd: CddAnalysis | null;
+  /** Present when the customer uploaded hourly weather data. */
+  weather: HourlyWeatherAnalysis | null;
 }
 
 // ---- Logger (Fluke) ----
@@ -359,5 +367,75 @@ export interface CddAnalysis {
   expectedKWh: number;
   firstHalfResidualPct: number | null;
   secondHalfResidualPct: number | null;
+  notes: string[];
+}
+
+// ---- Hourly weather (temperature, optional humidity / enthalpy) ----
+
+export interface WeatherHour {
+  ts: number; // start of the hour, ms (naive local time encoded as UTC)
+  tempC: number;
+  rh?: number; // relative humidity, %
+  enthalpy?: number; // kJ/kg dry air
+}
+
+export interface WeatherHourlyData {
+  fileName: string;
+  hours: WeatherHour[];
+  hasHumidity: boolean;
+  hasEnthalpy: boolean;
+  /** true when enthalpy was computed from temperature + humidity */
+  enthalpyComputed: boolean;
+  rowCount: number;
+  notes: string[];
+}
+
+export interface HourlyWeatherRow {
+  ts: number;
+  kW: number; // average plant kW (chillers + aux) over the logged part of the hour
+  tr: number;
+  kwPerTR: number;
+  tempC: number | null;
+  rh: number | null;
+  enthalpy: number | null;
+  expectedKW: number | null;
+  used: boolean;
+}
+
+export interface WeatherBin {
+  label: string;
+  lo: number;
+  hi: number;
+  hours: number;
+  avgKW: number;
+  avgTR: number;
+  kwPerTR: number; // Σ kW / Σ TR (energy weighted)
+}
+
+export type WeatherPredictorSet = 'temperature' | 'enthalpy' | 'temperature+humidity';
+
+export interface WeatherCandidate {
+  id: WeatherPredictorSet;
+  label: string;
+  energy: RegressionModel; // hourly plant kW
+  load: RegressionModel | null; // hourly plant TR
+}
+
+export interface HourlyWeatherAnalysis {
+  fileName: string;
+  rows: HourlyWeatherRow[];
+  usedHours: number;
+  skipped: { noWeather: number; partial: number };
+  candidates: WeatherCandidate[];
+  selected: WeatherCandidate | null;
+  /** Pearson correlation of hourly plant kW with each available weather variable */
+  correlations: { temperature: number | null; humidity: number | null; enthalpy: number | null };
+  reference: { tempC: number; rh: number | null; enthalpy: number | null } | null;
+  normalised: { kW: number; tr: number; kwPerTR: number } | null;
+  tempBins: WeatherBin[];
+  enthalpyBins: WeatherBin[] | null;
+  hasHumidity: boolean;
+  hasEnthalpy: boolean;
+  enthalpyComputed: boolean;
   notes: string[];
 }

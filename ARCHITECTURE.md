@@ -38,6 +38,11 @@ results never depend on upload order.
 * The baseline is fitted over the whole analysed period, so a late change in consumption is partly absorbed by the fit (drift is understated).
 * Temperature files keep the daily mean temperature, so changing the base temperature recomputes CDD.
 
+## Hourly weather (temperature, optional humidity / enthalpy)
+`analysis/weather.ts` reads an hourly weather file: temperature is required; relative humidity and enthalpy are optional. °F, Btu/lb and 0–1 humidity fractions are converted; sub-hourly rows are averaged per hour; with humidity but no enthalpy column the enthalpy is computed (`h = 1.006·T + W·(2501 + 1.86·T)`, Magnus saturation pressure, pressure from Plant Settings). `analysis/weatherAnalysis.ts` joins the hours with the plant results and fits hourly plant kW and TR against **temperature**, **enthalpy** and **temperature + humidity** (`regression/weather.ts`, hourly Guideline 14 limits: CV ≤ 30 %, |NMBE| ≤ 10 %). Selection mirrors the plant regression: start with temperature, move on only if CV(RMSE) < 95 % of the best AND adjusted R² is higher. Also: correlations, weather-normalised kW/TR at the mean weather, and 2 °C / 5 kJ/kg bin tables (hours, kW, TR, Σ kW/Σ TR). One hourly file also yields daily CDD (days with ≥ 18 hourly values) so the daily CDD analysis runs without a separate CDD file; an explicit CDD file takes precedence.
+* Only hours in which the plant ran (≥ 30 min of rows) are used by default; "include off hours" adds logged off hours as zero-energy hours.
+* Weather stamps are read as hour-starting unless Plant Settings says hour-ending. A time-zone or convention mismatch shows up as a weak or negative temperature slope (the tool says so).
+
 ## Licensing components
 See LICENSING.md. Database schema: `license-server/schema.sql` (licenses, activations, counters, audit).
 
