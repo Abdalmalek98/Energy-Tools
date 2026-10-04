@@ -5,13 +5,19 @@ import { AesBox } from "@lsr/licensing";
 import { hintText, ModelPage, SYSTEM_PROMPT } from "@lsr/shared";
 
 /**
- * PERSONAL BUILD ONLY (LSR_PERSONAL=1). The owner's own PC reads pages straight from Groq with their own key:
+ * PERSONAL BUILD ONLY (LSR_PERSONAL=1). The owner's own PC reads pages straight from Gemini (free tier) or Groq with their own key:
  * no licence, no server. The key is stored encrypted on this PC (DPAPI on Windows). Never ship this build to customers:
  * a key inside a customer's PC can be extracted. The release gate refuses a bundle that contains this mode.
  */
-export const DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
-const BASE = __E2E__ && process.env.LSR_GROQ_BASE ? process.env.LSR_GROQ_BASE : "https://api.groq.com/openai/v1";   // overridable in E2E builds only
-interface Saved { apiKey?: string; model?: string }
+export type Provider = "gemini" | "groq";
+export const PROVIDERS: Record<Provider, { label: string; base: string; defaultModel: string; maxTokens: Record<string, number> }> = {
+  gemini: { label: "Google Gemini", base: "https://generativelanguage.googleapis.com/v1beta/openai", defaultModel: "gemini-2.5-flash", maxTokens: { max_tokens: 16384 } },   // free tier; Gemini's OpenAI-compatible endpoint
+  groq: { label: "Groq", base: "https://api.groq.com/openai/v1", defaultModel: "meta-llama/llama-4-scout-17b-16e-instruct", maxTokens: { max_completion_tokens: 8192 } },
+};
+/** Both providers speak the OpenAI chat format. E2E builds may point them at a local stub. */
+const baseOf = (p: Provider) => (__E2E__ && process.env[`LSR_${p.toUpperCase()}_BASE`]) || PROVIDERS[p].base;
+interface Entry { apiKey?: string; model?: string }
+interface Saved { provider?: Provider; gemini?: Entry; groq?: Entry; apiKey?: string; model?: string }   // apiKey/model at the top level = an older Groq-only file
 
 const file = () => join(app.getPath("userData"), "personal-groq.dat");
 const aes = () => new AesBox(`personal|${app.getPath("userData")}|${process.env.USERNAME ?? process.env.USER ?? ""}`);
@@ -21,7 +27,9 @@ function load(): Saved {
     const raw = readFileSync(file());
     if (!raw.length) return {};
     const text = process.platform === "win32" ? safeStorage.decryptString(raw) : aes().open(raw.toString("utf8"));
-    return JSON.parse(text) as Saved;
+    const s = JSON.parse(text) as Saved;
+    if (s.apiKey && !s.groq) { s.groq = { apiKey: s.apiKey, model: s.model }; s.provider ??= "groq"; delete s.apiKey; delete s.model; }
+    return s;
   } catch { return {}; }
 }
 function save(s: Saved) {
@@ -31,41 +39,45 @@ function save(s: Saved) {
   const data = process.platform === "win32" ? safeStorage.encryptString(text) : Buffer.from(aes().seal(text), "utf8");
   const tmp = file() + ".tmp"; writeFileSync(tmp, data); renameSync(tmp, file());
 }
+const current = (s: Saved): Provider => s.provider ?? "gemini";
 
-/** The window may see whether a key is set and its last 4 characters, never the key. */
+/** The window may see which provider is active, whether a key is set and its last 4 characters, never the key. */
 export function personalGet() {
   const s = load();
-  return { configured: !!s.apiKey, keyHint: s.apiKey ? `…${s.apiKey.slice(-4)}` : null, model: s.model || DEFAULT_MODEL, defaultModel: DEFAULT_MODEL };
+  const view = (p: Provider) => { const e = s[p] ?? {}; return { label: PROVIDERS[p].label, configured: !!e.apiKey, keyHint: e.apiKey ? `…${e.apiKey.slice(-4)}` : null, model: e.model || PROVIDERS[p].defaultModel, defaultModel: PROVIDERS[p].defaultModel }; };
+  return { provider: current(s), gemini: view("gemini"), groq: view("groq") };
 }
-export function personalSet(p: { apiKey?: string; model?: string; clearKey?: boolean }) {
+export function personalSet(p: { provider?: Provider; apiKey?: string; model?: string; clearKey?: boolean }) {
   const s = load();
-  if (p.clearKey) delete s.apiKey;
+  if (p.provider !== undefined) { if (!(p.provider in PROVIDERS)) throw new Error("Unknown provider."); s.provider = p.provider; }
+  const name = current(s); const e: Entry = { ...(s[name] ?? {}) };
+  if (p.clearKey) delete e.apiKey;
   if (typeof p.apiKey === "string" && p.apiKey.trim()) {
     const k = p.apiKey.trim();
     if (!/^[\x21-\x7e]{12,400}$/.test(k)) throw new Error("That does not look like an API key (no spaces, 12-400 characters).");
-    s.apiKey = k;
+    e.apiKey = k;
   }
   if (typeof p.model === "string") {
     const m = p.model.trim();
     if (m && !/^[A-Za-z0-9._:/@+-]{1,120}$/.test(m)) throw new Error("A model id may contain letters, digits and . _ : / @ + - only.");
-    if (m) s.model = m; else delete s.model;
+    if (m) e.model = m; else delete e.model;
   }
-  save(s);
+  s[name] = e; save(s);
   return personalGet();
 }
 
-/** Asks Groq which models this key can use (reads no page, costs nothing). */
+/** Asks the active provider which models this key can use (reads no page). */
 export async function personalTest() {
-  const s = load();
-  if (!s.apiKey) return { ok: false, message: "No Groq API key is saved yet.", models: [] as string[] };
+  const s = load(); const name = current(s); const e = s[name] ?? {};
+  if (!e.apiKey) return { ok: false, message: `No ${PROVIDERS[name].label} API key is saved yet.`, models: [] as string[] };
   let res: Response;
-  try { res = await fetch(`${BASE}/models`, { headers: { authorization: `Bearer ${s.apiKey}` }, signal: AbortSignal.timeout(15_000) }); }
-  catch { return { ok: false, message: "Could not reach Groq. Check this PC's internet connection.", models: [] }; }
-  if (res.status === 401 || res.status === 403) return { ok: false, message: "Groq rejected this API key.", models: [] };
-  if (!res.ok) return { ok: false, message: `Groq answered HTTP ${res.status}.`, models: [] };
+  try { res = await fetch(`${baseOf(name)}/models`, { headers: { authorization: `Bearer ${e.apiKey}` }, signal: AbortSignal.timeout(15_000) }); }
+  catch { return { ok: false, message: `Could not reach ${PROVIDERS[name].label}. Check this PC's internet connection.`, models: [] }; }
+  if (res.status === 400 || res.status === 401 || res.status === 403) return { ok: false, message: `${PROVIDERS[name].label} rejected this API key.`, models: [] };
+  if (!res.ok) return { ok: false, message: `${PROVIDERS[name].label} answered HTTP ${res.status}.`, models: [] };
   const j = (await res.json().catch(() => ({}))) as { data?: { id?: string }[] };
-  const models = (j.data ?? []).map((m) => String(m.id ?? "")).filter(Boolean).sort();
-  const model = s.model || DEFAULT_MODEL;
+  const models = (j.data ?? []).map((m) => String(m.id ?? "").replace(/^models\//, "")).filter(Boolean).sort();
+  const model = e.model || PROVIDERS[name].defaultModel;
   return { ok: true, message: models.length && !models.includes(model) ? `Key accepted, but the model "${model}" is not in your list. Pick one from the list.` : "Key accepted.", models };
 }
 
@@ -73,9 +85,9 @@ type ReadResult = { ok: true; page: unknown } | { ok: false; error: string; mess
 const fail = (error: string, message: string, retryable = false): ReadResult => ({ ok: false, error, message, retryable });
 
 export async function personalReadPage(images: Uint8Array[], hint?: string): Promise<ReadResult> {
-  const s = load();
-  if (!s.apiKey) return fail("not_configured", "No Groq API key yet. Open Settings and paste your key.");
-  const model = s.model || DEFAULT_MODEL;
+  const saved = load(); const name = current(saved); const label = PROVIDERS[name].label; const e = saved[name] ?? {};
+  if (!e.apiKey) return fail("not_configured", `No ${label} API key yet. Open Settings and paste your key.`);
+  const model = e.model || PROVIDERS[name].defaultModel;
   const labels = ["Whole page", "Top 56% of the page (zoomed)", "Bottom 56% of the page (zoomed)"];
   const content: unknown[] = [];
   images.forEach((b, i) => {
@@ -86,17 +98,17 @@ export async function personalReadPage(images: Uint8Array[], hint?: string): Pro
   content.push({ type: "text", text: (ctx ? ctx + "\n" : "") + "Transcribe this page. Return the JSON object only." });
   let res: Response;
   try {
-    res = await fetch(`${BASE}/chat/completions`, {
-      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${s.apiKey}` },
-      body: JSON.stringify({ model, temperature: 0, max_completion_tokens: 8192, messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content }] }),
+    res = await fetch(`${baseOf(name)}/chat/completions`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${e.apiKey}` },
+      body: JSON.stringify({ model, temperature: 0, ...PROVIDERS[name].maxTokens, messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content }] }),
       signal: AbortSignal.timeout(170_000),
     });
-  } catch { return fail("network", "Could not reach Groq. Check this PC's internet connection.", true); }
+  } catch { return fail("network", `Could not reach ${label}. Check this PC's internet connection.`, true); }
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) return fail("provider_auth", "Groq rejected your API key. Check it in Settings.");
-    if (res.status === 404) return fail("provider_model", `Groq does not know the model "${model}". Choose a vision model in Settings.`);
-    if (res.status === 400 || res.status === 413) return fail("provider_input", `Groq could not accept this page (${res.status}). The model may not support images, or the images are too large.`);
-    return fail("provider_busy", `Groq is busy or unavailable (${res.status}). Try again.`, res.status === 429 || res.status >= 500);
+    if (res.status === 401 || res.status === 403) return fail("provider_auth", `${label} rejected your API key. Check it in Settings.`);
+    if (res.status === 404) return fail("provider_model", `${label} does not know the model "${model}". Choose a vision model in Settings.`);
+    if (res.status === 400 || res.status === 413) return fail("provider_input", `${label} could not accept this page (${res.status}). The model may not support images, or the key is not valid.`);
+    return fail("provider_busy", `${label} is busy or its free limit was reached (${res.status}). Wait a minute and try again.`, res.status === 429 || res.status >= 500);
   }
   const body = (await res.json()) as { choices?: { message?: { content?: string | null }; finish_reason?: string }[] };
   const choice = body.choices?.[0];

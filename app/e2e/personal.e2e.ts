@@ -15,12 +15,12 @@ const page1 = {
   rows: [{ row: 1, floor: "GF", room_name: "OFFICE", unit_desc: "2FT", lamp_desc: "T8", lamps_per_fixture: 2, lamp_watt: 18, fixture_qty: 3, uncertain: [], note: null }],
 };
 
-test("personal build: no activation screen, the Groq key is saved encrypted and never shown, pages are read directly through Groq", async () => {
+test("personal build: no activation screen, Gemini (default) and Groq keys are saved encrypted and never shown, pages are read directly through the chosen provider", async () => {
   execSync("npx electron-vite build", { cwd: APP, stdio: "inherit", env: { ...process.env, LSR_E2E: "1", LSR_PERSONAL: "1" } });
   const groq = await startGroqUpstream([page1, page1, page1]);
   const data = mkdtempSync(path.join(tmpdir(), "lsr-pers-"));
   const pdf = path.join(data, "g.pdf"); copyFileSync(path.join(REF, "samples", "Al-Fatiha_Center_-_________________.pdf"), pdf);
-  const app = await electron.launch({ args: ["--no-sandbox", "--disable-gpu", APP], env: { ...process.env, LSR_USER_DATA: data, LSR_E2E: "1", LSR_GROQ_BASE: "http://127.0.0.1:8791", LSR_E2E_OPEN: JSON.stringify([pdf]) } as Record<string, string> });
+  const app = await electron.launch({ args: ["--no-sandbox", "--disable-gpu", APP], env: { ...process.env, LSR_USER_DATA: data, LSR_E2E: "1", LSR_GROQ_BASE: "http://127.0.0.1:8791", LSR_GEMINI_BASE: "http://127.0.0.1:8791", LSR_E2E_OPEN: JSON.stringify([pdf, pdf]) } as Record<string, string> });
   try {
     const page = await app.firstWindow(); await page.setViewportSize({ width: 1440, height: 900 });
     await expect(page.getByTestId("personal-banner")).toBeVisible();          // straight into the app, no activation
@@ -29,24 +29,39 @@ test("personal build: no activation screen, the Groq key is saved encrypted and 
     await page.getByTestId("new-project").click(); await page.getByTestId("add-files").click();
     await expect(page.locator('[data-testid^="page-"]')).toHaveCount(3);
     await page.getByTestId("read-pages").click();
-    await expect(page.getByText(/No Groq API key yet/).first()).toBeVisible();
+    await expect(page.getByText(/No Google Gemini API key yet/).first()).toBeVisible();
     // connect the key in Settings
     await page.getByTestId("tab-settings").click();
-    await page.locator("#pg-key").fill("gsk_PERSONAL_KEY_1234567890"); await page.locator("#pg-model").fill("e2e-vision-a");
+    await page.locator("#pg-key").fill("AIza_PERSONAL_KEY_1234567890"); await page.locator("#pg-model").fill("e2e-vision-a");
     await page.getByTestId("personal-save").click();
     await expect(page.getByTestId("personal-state")).toContainText("…7890");
     await expect(page.locator("#pg-key")).toHaveValue("");                    // the key box is write-only
     await page.getByTestId("personal-test").click();
     await expect(page.getByTestId("personal-msg")).toHaveText("Key accepted.");
-    expect(groq.calls.find((c) => c.method === "GET")).toMatchObject({ url: "/models", auth: "Bearer gsk_PERSONAL_KEY_1234567890" });
+    expect(groq.calls.find((c) => c.method === "GET")).toMatchObject({ url: "/models", auth: "Bearer AIza_PERSONAL_KEY_1234567890" });
     // not stored in clear text
-    for (const f of readdirSync(data)) if (statSafe(path.join(data, f))) expect(readFileSync(path.join(data, f)).toString("latin1")).not.toContain("gsk_PERSONAL_KEY");
+    for (const f of readdirSync(data)) if (statSafe(path.join(data, f))) expect(readFileSync(path.join(data, f)).toString("latin1")).not.toContain("AIza_PERSONAL_KEY");
     // read the pages
     await page.getByTestId("tab-project").click();
     await page.getByTestId("read-pages").click(); await expect(page.getByTestId("page-done")).toHaveCount(3);
     const reads = groq.calls.filter((c) => c.method === "POST");
     expect(reads).toHaveLength(3);
-    for (const c of reads) { expect(c.auth).toBe("Bearer gsk_PERSONAL_KEY_1234567890"); expect(c.model).toBe("e2e-vision-a"); expect(c.images).toBe(3); }
+    for (const c of reads) { expect(c.auth).toBe("Bearer AIza_PERSONAL_KEY_1234567890"); expect(c.model).toBe("e2e-vision-a"); expect(c.images).toBe(3); }
+    // switch to Groq: its own key and model, same app
+    await page.getByTestId("tab-settings").click();
+    await page.getByTestId("prov-groq").check();
+    await expect(page.getByTestId("personal-state")).toHaveText("No key saved yet.");
+    await page.locator("#pg-key").fill("gsk_PERSONAL_GROQ_1234567890"); await page.locator("#pg-model").fill("e2e-vision-b");
+    await page.getByTestId("personal-save").click();
+    await expect(page.getByTestId("personal-state")).toContainText("…7890");
+    groq.calls.length = 0;
+    await page.getByTestId("tab-project").click();
+    await page.getByTestId("add-files").click();                                // 3 new pages to read with Groq
+    await expect(page.getByTestId("page-new")).toHaveCount(3);
+    await page.getByTestId("read-pages").click(); await expect(page.getByTestId("page-done")).toHaveCount(6);
+    expect(groq.calls.filter((c) => c.method === "POST")).toHaveLength(3);
+    for (const c of groq.calls.filter((c) => c.method === "POST")) { expect(c.auth).toBe("Bearer gsk_PERSONAL_GROQ_1234567890"); expect(c.model).toBe("e2e-vision-b"); }
+    for (const f of readdirSync(data)) if (statSafe(path.join(data, f))) expect(readFileSync(path.join(data, f)).toString("latin1")).not.toContain("gsk_PERSONAL_GROQ");
   } finally { await app.close(); await groq.close(); }
 });
 const statSafe = (p: string) => { try { return existsSync(p) && readFileSync(p).length > 0; } catch { return false; } };

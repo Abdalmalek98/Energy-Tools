@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { SpaceRule } from "@lsr/shared";
 import { isError, type LicStatus } from "../types";
 import { LicensePanel } from "./LicensePanel";
-import { PersonalGroq } from "./PersonalGroq";
+import { PersonalProvider } from "./PersonalProvider";
 import { useProject } from "../store";
 
 export function SettingsView({ status }: { status: LicStatus }) {
@@ -16,7 +16,7 @@ export function SettingsView({ status }: { status: LicStatus }) {
     <div className="page">
       <h1>Settings & About</h1>
       {err && <p className="error" role="alert" data-testid="settings-error">{err}</p>}
-      {status.personal ? <PersonalGroq /> : <LicensePanel status={status} />}
+      {status.personal ? <PersonalProvider /> : <LicensePanel status={status} />}
       <div className="card" data-testid="about">
         <h2>About</h2>
         <p>Version {status.version}</p>
