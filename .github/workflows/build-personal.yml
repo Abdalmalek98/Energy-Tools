@@ -25,3 +25,10 @@ jobs:
           path: app/release/LightingSurveyReader-Personal.exe
           if-no-files-found: error
           retention-days: 14
+      - name: Also publish the unpacked folder (no self-extraction; use this if the single exe is blocked by Windows or antivirus)
+        uses: actions/upload-artifact@v4
+        with:
+          name: LightingSurveyReader-PERSONAL-folder
+          path: app/release/win-unpacked
+          if-no-files-found: error
+          retention-days: 14
