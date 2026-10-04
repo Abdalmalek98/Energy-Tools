@@ -38,11 +38,13 @@ if [ "${1:-}" != "--post" ]; then
   case "${LSR_SERVICE_URL:-}" in https://*) : ;; *) bad "LSR_SERVICE_URL must be your real https:// server address" ;; esac
   case "${LSR_SERVICE_URL:-}" in *localhost*|*127.0.0.1*|*REPLACE-ME*|*example.com*) bad "LSR_SERVICE_URL points at a local/placeholder address" ;; esac
   [ "${LSR_E2E:-}" != 1 ] || bad "LSR_E2E must not be set in a release build"
+  [ "${LSR_PERSONAL:-}" != 1 ] || bad "LSR_PERSONAL must not be set in a release build (the personal build has no licence)"
   [ "${LSR_RELEASE:-}" = 1 ] || bad "LSR_RELEASE=1 is not set: development keys would be compiled in"
 else
   [ -f "$BUNDLE" ] || bad "$BUNDLE not found: build first"
   if [ -f "$BUNDLE" ]; then
     grep -q "dev-1\|dev-srv-1\|keyring\.debug\|DEBUG_KEYRING" "$BUNDLE" && bad "the bundle still contains the development keyring"
+    grep -q "personal-groq\.dat" "$BUNDLE" && bad "the bundle contains the PERSONAL (unlicensed) mode"
     grep -Eq "e2e = (true|isDev)" "$BUNDLE" && bad "the bundle was built in E2E mode (scripted file dialogs)"
     grep -Eo 'https?://[^"'"'"'` )]+' "$BUNDLE" | grep -Eq '127\.0\.0\.1|localhost|REPLACE-ME' && bad "the bundle points at a local/placeholder server URL"
     for role in license receipt; do

@@ -39,6 +39,7 @@ function Shell({ status }: { status: LicStatus }) {
         {tabs.map(([v, label]) => <button key={v} data-testid={`tab-${v}`} className={view === v ? "on" : ""} disabled={(v === "project" || v === "review" || v === "export") && !hasProject} onClick={() => setView(v)}>{label}</button>)}
         
       </nav>
+      {status.personal && <p className="warnbanner" role="status" data-testid="personal-banner">PERSONAL BUILD: no licence, uses your own Groq key. Not for customers. <button className="link" onClick={() => setView("settings")}>Groq key</button></p>}
       {status.evaluation.warning && <p className="warnbanner" role="status" data-testid="warning-banner">{status.evaluation.warning} <button className="link" onClick={() => setView("settings")}>License details</button></p>}
       {err && <p className="error banner" role="alert" data-testid="app-error">{err}</p>}
       {view === "home" && <Home status={status} onNew={newProject} onOpen={(p) => void open(p)} />}

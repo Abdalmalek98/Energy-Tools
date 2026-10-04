@@ -30,6 +30,15 @@ The same can be set with environment variables (`PROVIDER`, `GROQ_API_KEY`, `GRO
 * **Quality and cost differ between providers.** The reading prompt was tuned with Claude; Groq's vision models may read handwriting less accurately. Compare with real sheets before switching customers: use `npm run local` with `GROQ_API_KEY` set, then `npm run accuracy` to get a per-column report against your typed answers. The usage log shows tokens per page for either provider.
 * Groq's model names, image limits and prices change: check the Groq console. This integration follows Groq's OpenAI-compatible API but could not be tested against the live service from the build environment (only against a stub), so run **Test connection** and one real page before relying on it.
 
+## Personal build: your own Groq key, no server, no licence
+For using the tool yourself before a licensing server exists. It is a separate **portable exe** that skips activation and reads pages directly with **your** Groq key.
+
+1. GitHub → **Actions** → *Build PERSONAL exe (owner only)* → **Run workflow**. When it finishes, download the artifact `LightingSurveyReader-PERSONAL-owner-only` (needs your GitHub login) and unzip `LightingSurveyReader-Personal.exe`.
+2. Run it. A yellow banner says *PERSONAL BUILD*. Open **Settings → Groq API key**, paste your key, choose a vision model, press **Save**, then **Test connection**.
+3. Add your PDFs/photos and press **Read pages** as usual.
+
+Rules: the key is stored encrypted on that PC (Windows DPAPI) and the box is write-only. This build keeps its data apart from a licensed install (`%APPDATA%\LightingSurveyReader-Personal`). **Never give it to customers**: it has no licence check and a key on a customer's PC can be extracted. The release gate refuses to ship a personal bundle (`LSR_PERSONAL=1` before the build, or the personal code found in the bundle after it). Locally: `npm run dist -w app -- --personal`.
+
 ## Customer messages
 | They see | Meaning / what you do |
 |---|---|

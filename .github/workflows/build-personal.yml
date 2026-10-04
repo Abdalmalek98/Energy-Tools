@@ -1,0 +1,27 @@
+name: Build PERSONAL exe (owner only)
+# Manual only. Produces ONE portable exe with NO licence check that reads with your own Groq key (Settings > Groq API key).
+# It is an artifact (needs a GitHub login to download), never a public release. Do not give it to customers.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  personal:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build the personal exe
+        shell: bash
+        run: npm run dist -w app -- --personal --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LightingSurveyReader-PERSONAL-owner-only
+          path: app/release/LightingSurveyReader-Personal.exe
+          if-no-files-found: error
+          retention-days: 14

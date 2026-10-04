@@ -7,10 +7,11 @@ import { buildKeyring, RELEASE_BUILD } from "./licensing/keyring";
 import { createLicenseStore } from "./licensing/store";
 import { readLsr, writeLsr } from "./projectFile";
 import { settingsStore } from "./store";
+import { personalGet, personalReadPage, personalSet, personalTest } from "./personal";
 import { checkForUpdates, scheduleUpdateChecks } from "./updates";
 
 // settings live in %APPDATA%\LightingSurveyReader
-app.setPath("userData", join(app.getPath("appData"), "LightingSurveyReader"));
+app.setPath("userData", join(app.getPath("appData"), __PERSONAL__ ? "LightingSurveyReader-Personal" : "LightingSurveyReader"));   // the personal build never shares data with a licensed install
 if (process.env.LSR_USER_DATA) app.setPath("userData", process.env.LSR_USER_DATA);   // tests only
 if (!app.requestSingleInstanceLock() && !__E2E__) app.quit();
 
@@ -60,6 +61,7 @@ app.whenReady().then(async () => {
   if (e2e && process.env.LSR_TEST_MACHINE_SEED) { const seed = process.env.LSR_TEST_MACHINE_SEED; env.readFile = () => seed; env.hostname = () => seed; env.devId = () => seed; env.cpuModel = () => "test-cpu"; env.macs = () => []; }   // E2E: pretend to be another PC
   let memo: { at: number; v: ReturnType<typeof collectComps> } | null = null;
   const collect = () => { if (!memo || Date.now() - memo.at > 5 * 60_000) memo = { at: Date.now(), v: collectComps(env, __DEVICE_SALT__) }; return memo.v; };
+  if (__PERSONAL__) { registerIpc(); createWindow(); return; }
   license = new LicenseClient({
     keys: buildKeyring(), product: PRODUCT, releaseBuild: RELEASE_BUILD, appVersion: app.getVersion(), collect, http: fetchHttp(__SERVICE_URL__),
     store: createLicenseStore(Object.values(collect()).join("|")),
@@ -73,7 +75,9 @@ app.whenReady().then(async () => {
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 
-const statusPayload = () => { const st: ClientStatus = license.status(); return { ...st, contact: __CONTACT__, supportUrl: __SUPPORT_URL__, version: app.getVersion(), now: Math.floor(Date.now() / 1000) }; };
+/** Personal build: no licence at all (see personal.ts). */
+const personalStatus = (): ClientStatus => ({ evaluation: { status: "active", usable: true, message: "Personal build (not licensed).", warning: null, info: null, clockRollback: false, effectiveNowMs: Date.now() }, machineId: "", notice: null });
+const statusPayload = () => { const st: ClientStatus = __PERSONAL__ ? personalStatus() : license.status(); return { ...st, personal: __PERSONAL__, contact: __CONTACT__, supportUrl: __SUPPORT_URL__, version: app.getVersion(), now: Math.floor(Date.now() / 1000) }; };
 /** Tell the window when the licence state changes (also lets a lock apply to a running app). */
 function pushStatus() {
   const p = statusPayload(); const j = JSON.stringify([p.evaluation.status, p.evaluation.warning, p.evaluation.info?.expiresAt, p.evaluation.info?.lastValidatedAt, p.notice]);
@@ -86,12 +90,17 @@ const safe = <A extends unknown[], R>(fn: (...a: A) => Promise<R> | R) => async 
 function registerIpc() {
   ipcMain.handle("app:info", () => ({ version: app.getVersion(), contact: __CONTACT__, e2e }));
   ipcMain.handle("license:status", () => statusPayload());
+  if (__PERSONAL__) {
+    ipcMain.handle("personal:get", safe(() => personalGet()));
+    ipcMain.handle("personal:set", safe((_e: unknown, p: Parameters<typeof personalSet>[0]) => personalSet(p)));
+    ipcMain.handle("personal:test", safe(() => personalTest()));
+  }
   ipcMain.handle("license:activate", async (_e, code: unknown) => {
     if (typeof code !== "string" || !code.trim()) return { ok: false, error: "format", message: "Paste or type your activation code." };
     if (code.length > 4000) return { ok: false, error: "format", message: "That is not a valid activation code." };
     try { const r = await license.activate(code); pushStatus(); return r; } catch (e) { return { ok: false, error: "storage", message: `The licence could not be saved on this PC: ${(e as Error).message}` }; }
   });
-  ipcMain.handle("license:check", async () => { await license.validateNow("validate"); pushStatus(); return statusPayload(); });
+  ipcMain.handle("license:check", async () => { if (!__PERSONAL__) await license.validateNow("validate"); pushStatus(); return statusPayload(); });
   ipcMain.handle("license:deactivate", safe(async () => { const r = await license.deactivate(); pushStatus(); return { ...r, status: statusPayload() }; }));
   ipcMain.handle("clipboard:write", (_e, text: unknown) => { if (typeof text === "string" && text.length < 20_000) { clipboard.writeText(text); return true; } return false; });
   ipcMain.handle("support:open", () => { if (/^(https:\/\/|mailto:)/.test(__SUPPORT_URL__)) void shell.openExternal(__SUPPORT_URL__); return !!__SUPPORT_URL__; });
@@ -106,6 +115,7 @@ function registerIpc() {
 
   ipcMain.handle("read:page", async (_e, images: ArrayBuffer[], quality: "best" | "fast", hint?: string) => {
     if (!Array.isArray(images) || images.length < 1 || images.length > 3) return { ok: false, error: "bad_request", message: "Bad request." };
+    if (__PERSONAL__) return personalReadPage(images.map((b) => new Uint8Array(b)), typeof hint === "string" ? hint : undefined);
     const r = await license.readPage(images.map((b) => new Uint8Array(b)), quality === "fast" ? "fast" : "best", typeof hint === "string" ? hint : undefined);
     pushStatus();                                                  // a refusal (revoked/suspended/expired) locks the running app at once
     return r;

@@ -10,6 +10,7 @@ const api = {
     deactivate: () => ipcRenderer.invoke("license:deactivate"),
     onStatus: (cb: (s: unknown) => void) => { const h = (_e: unknown, s: unknown) => cb(s); ipcRenderer.on("license:status", h); return () => { ipcRenderer.removeListener("license:status", h); }; },
   },
+  personal: { get: () => ipcRenderer.invoke("personal:get"), set: (p: unknown) => ipcRenderer.invoke("personal:set", p), test: () => ipcRenderer.invoke("personal:test") },
   settings: { get: () => ipcRenderer.invoke("settings:get"), set: (p: unknown) => ipcRenderer.invoke("settings:set", p) },
   files: { pick: () => ipcRenderer.invoke("files:pick") },
   read: { page: (images: ArrayBuffer[], quality: "best" | "fast", hint?: string) => ipcRenderer.invoke("read:page", images, quality, hint) },

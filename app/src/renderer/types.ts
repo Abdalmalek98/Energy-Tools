@@ -1,5 +1,5 @@
 import type { ClientStatus } from "@lsr/licensing";
-export interface LicStatus extends ClientStatus { contact: string; supportUrl: string; version: string; now: number }
+export interface LicStatus extends ClientStatus { contact: string; supportUrl: string; version: string; now: number; personal?: boolean }
 export type View = "home" | "project" | "review" | "export" | "settings";
 export const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 /** IPC handlers answer { error } when something failed on disk/dialog: show it, never swallow it. */

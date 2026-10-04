@@ -48,4 +48,10 @@ d("release gate", () => {
     expect(r.status).toBe(1); expect(r.stderr).toContain("development keyring");
     void mkdirSync;
   }, 180_000);
+  it("refuses the PERSONAL (unlicensed, own-Groq-key) build: LSR_PERSONAL before building, and a personal bundle after", () => {
+    expect(gate({ ...goodEnv(good), LSR_PERSONAL: "1" }).stderr).toContain("LSR_PERSONAL");
+    expect(spawnSync("npx", ["electron-vite", "build"], { cwd: path.join(ROOT, "app"), encoding: "utf8", env: { ...process.env, ...goodEnv(good), LSR_PERSONAL: "1" } }).status).toBe(0);
+    const r = gate(goodEnv(good), "--post");
+    expect(r.status).toBe(1); expect(r.stderr).toContain("PERSONAL");
+  }, 180_000);
 });

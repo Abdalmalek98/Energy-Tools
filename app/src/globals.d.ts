@@ -6,3 +6,4 @@ declare const __SUPPORT_URL__: string;
 declare const __DEVICE_SALT__: string;
 declare const __CONTACT__: string;
 declare const __E2E__: boolean;
+declare const __PERSONAL__: boolean;
