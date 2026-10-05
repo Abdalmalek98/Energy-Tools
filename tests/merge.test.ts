@@ -29,6 +29,14 @@ describe('logger / BMS merge', () => {
     expect(rows.map((x) => x.kW)).toEqual(before);
     expect(bms.rows.every((x) => x.kWLogger === undefined)).toBe(true);
   });
+  it('sums the window means of several loggers attached to the same chiller (one meter per feeder)', () => {
+    const { bms } = bmsOf();
+    const T = T0 + 30 * 60000;
+    const a = logger('CH1', [[T - 60000, 100], [T, 200]], 1);
+    const b = logger('CH1b', [[T - 30000, 40], [T + 30000, 60]], 1);
+    const { rows } = mergeLoggers(bms, [{ logger: a, chiller: 'CH1' }, { logger: b, chiller: 'CH1' }]);
+    expect(rows.find((x) => x.chiller === 'CH1' && x.ts === T)!.kWLogger).toBeCloseTo(150 + 50, 9);
+  });
   it('falls back to the nearest reading within one interval, else nothing', () => {
     const { bms } = bmsOf();
     const T = T0 + 60 * 60000;
