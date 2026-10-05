@@ -49,6 +49,8 @@ results never depend on upload order.
 * **Daily:** `kWh_d = a·Σx_d + b`, `TR·h_d = c·kWh_d + d` fitted on complete logged days (24 hourly values), evaluated for every complete typical day.
 A typical year with other than 8,760 usable hours is scaled to 8,760 (with a note). The annual kW/TR is Σ kWh ÷ Σ TR·h. Optional scenario: proposed kW/TR × (1 + safety %) × annual TR·h versus the hourly-method baseline. The Excel *Annual Projection* sheet recomputes the hourly method with live formulas (including the wet-bulb formula) from editable coefficients. The method follows the "KAIA LC2" chiller-analysis workbook (same regressions, same Stull formula); unlike that workbook, which sums only the weather rows present, the totals here always cover a full year. Aux/pump/tower baselines and chiller-count staging from that workbook are not modelled.
 
+**Air-cooled plants** (Plant Settings → Plant type; method from the "AFH Main Building Plant 2" workbook): the driver is dry-bulb temperature, and energy and cooling load are each regressed *directly* on it (`kW = a·T + b`, `TR = c·T + d`, each on its own valid hours) instead of chaining load through energy. Annual kWh and TR·h are the sums over the typical year; kW/TR = Σ kWh ÷ Σ TR·h; **EFLH** = annual kWh ÷ installed electrical capacity (Σ rated TR × rated kW/TR). The optional outlier filter (Plant Settings, σ, default off) drops points beyond that many residual standard deviations and refits once, reporting the share removed (the workbook's "excluding outliers" variants did this by hand).
+
 ## Licensing components
 See LICENSING.md. Database schema: `license-server/schema.sql` (licenses, activations, counters, audit).
 

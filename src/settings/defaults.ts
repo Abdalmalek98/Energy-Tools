@@ -26,6 +26,7 @@ export const DEFAULT_SETTINGS: Settings = {
   annualPredictor: 'auto',
   annualProposedKwPerTR: 0,
   annualSafetyPct: 10,
+  annualOutlierSigma: 0,
   typicalAnnualCdd: 0,
   cddMinCoverage: 0.9,
   weatherHourEnding: false,

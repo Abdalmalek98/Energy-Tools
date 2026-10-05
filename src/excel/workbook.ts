@@ -548,7 +548,7 @@ function annualSheet(a: AnalysisResult) {
   s.set(3, 0, 'Hourly regression (fitted on the logged hours)', styles.section); s.set(3, 1, '', styles.section);
   s.set(4, 0, 'Energy slope (kWh per driver unit)', styles.label); s.set(4, 1, h.energyModel.slope, styles.input, '0.0000');
   s.set(5, 0, 'Energy intercept (kWh)', styles.label); s.set(5, 1, h.energyModel.intercept, styles.input, '0.000');
-  s.set(6, 0, 'Load slope (TR·h per kWh)', styles.label); s.set(6, 1, h.loadModel.slope, styles.input, '0.000000');
+  s.set(6, 0, h.loadFrom === 'weather' ? 'Load slope (TR·h per driver unit)' : 'Load slope (TR·h per kWh)', styles.label); s.set(6, 1, h.loadModel.slope, styles.input, '0.000000');
   s.set(7, 0, 'Load intercept (TR·h)', styles.label); s.set(7, 1, h.loadModel.intercept, styles.input, '0.000');
   s.set(8, 0, 'Scale to 8,760 h', styles.label); s.set(8, 1, 8760 / p.typical.length, styles.input, '0.0000');
   s.set(9, 0, 'R² (energy vs driver / load vs energy)', styles.label); s.set(9, 1, h.energyModel.r2, styles.num, '0.000'); s.set(9, 2, h.loadModel.r2, styles.num, '0.000');
@@ -557,6 +557,7 @@ function annualSheet(a: AnalysisResult) {
   s.set(12, 0, 'Annual energy (kWh/yr)', styles.label); s.set(12, 1, { f: `SUM(${rng('F')})*B9`, v: h.kWh }, styles.num, '#,##0');
   s.set(13, 0, 'Annual cooling (TR·h/yr)', styles.label); s.set(13, 1, { f: `SUM(${rng('G')})*B9`, v: h.trHours }, styles.num, '#,##0');
   s.set(14, 0, 'Plant efficiency (kW/TR)', styles.label); s.set(14, 1, { f: 'IF(B14>0,B13/B14,"")', v: h.kwPerTR }, styles.num, '0.000');
+  if (h.eflh !== null) { s.set(15, 0, 'Equivalent full-load hours (h/yr)', styles.label); s.set(15, 1, { f: `B13/${(h.kWh / h.eflh).toFixed(6)}`, v: h.eflh }, styles.num, '#,##0'); }
   // scenario
   s.set(16, 0, 'Savings scenario', styles.section); s.set(16, 1, '', styles.section);
   const sc = p.scenario;
@@ -598,14 +599,14 @@ function annualSheet(a: AnalysisResult) {
     const rr = T0 + 1 + i, n = rr + 1;
     const drv = predictorValue(p.predictor, x) as number;
     const kwh = Math.max(0, h.energyModel.slope * drv + h.energyModel.intercept);
-    const tr = Math.max(0, h.loadModel.slope * kwh + h.loadModel.intercept);
+    const tr = Math.max(0, h.loadModel.slope * (h.loadFrom === 'weather' ? drv : kwh) + h.loadModel.intercept);
     const R = `MIN(MAX(C${n},1),100)`;
     const driver = p.predictor === 'temperature' ? `B${n}` : p.predictor === 'enthalpy' ? `D${n}` : `B${n}*ATAN(0.151977*SQRT(${R}+8.313659))+ATAN(B${n}+${R})-ATAN(${R}-1.676331)+0.00391838*${R}^1.5*ATAN(0.023101*${R})-4.686035`;
     s.set(rr, 0, toExcelDate(x.ts), styles.num, DATE_FMT);
     s.set(rr, 1, x.tempC, styles.num, '0.0'); s.set(rr, 2, x.rh ?? '', styles.num, '0'); s.set(rr, 3, x.enthalpy ?? '', styles.num, '0.0');
     s.set(rr, 4, { f: driver, v: drv }, styles.num, '0.00');
     s.set(rr, 5, { f: `MAX(0,$B$5*E${n}+$B$6)`, v: kwh }, styles.num, '#,##0');
-    s.set(rr, 6, { f: `MAX(0,$B$7*F${n}+$B$8)`, v: tr }, styles.num, '#,##0');
+    s.set(rr, 6, { f: `MAX(0,$B$7*${h.loadFrom === 'weather' ? 'E' : 'F'}${n}+$B$8)`, v: tr }, styles.num, '#,##0');
     s.set(rr, 7, { f: `MONTH(A${n})`, v: new Date(x.ts).getUTCMonth() + 1 }, styles.num, '0');
   });
   s.widths = [38, 14, 14, 16, 12, 12, 12, 8];

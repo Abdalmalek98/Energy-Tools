@@ -154,7 +154,7 @@ export function analyze(input: AnalysisInput): AnalysisResult {
     }
     if (cddInput) result.cdd = analyzeCdd(plant, dtH, perDay, cddInput, s);
     if (input.weather) result.weather = analyzeHourlyWeather(plant, dtH, perHour, input.weather, s);
-    if (result.weather && input.typicalWeather) result.annual = analyzeAnnual(result.weather, input.typicalWeather, s);
+    if (result.weather && input.typicalWeather) result.annual = analyzeAnnual(result.weather, input.typicalWeather, s, result.chillers.reduce((t, c) => t + c.ratedTR * c.ratedKwPerTR, 0));
   }
   result.findings = kept.length ? buildFindings(result, bms) : [];
   return result;

@@ -154,9 +154,15 @@ export function BarChart({ title, categories, series, yLabel, xLabel, height = 2
   const H = height;
   const all = series.flatMap((s) => s.values).filter(Number.isFinite);
   if (!all.length) return <div className="empty">No data to plot.</div>;
-  const yt = niceTicks(0, Math.max(...all) * 1.08, 5);
+  // category labels that do not fit side by side are tilted instead of overprinting each other
+  const rotate = Math.max(...categories.map((c) => c.length)) * 6.4 > (W - M.l - M.r) / categories.length - 4;
+  const top = Math.max(...all) * 1.08;
+  const yt = niceTicks(0, top, 5);
+  // the axis must reach above the tallest bar (and its value label), not stop at the last tick below it
+  if (yt.length > 1 && yt[yt.length - 1] < top) yt.push(Math.round((yt[yt.length - 1] + (yt[1] - yt[0])) * 1e9) / 1e9);
   const y1 = yt[yt.length - 1];
-  const sy = (v: number) => H - M.b - (v / y1) * (H - M.t - M.b);
+  const mb = rotate ? 66 : M.b;
+  const sy = (v: number) => H - mb - (v / y1) * (H - M.t - mb);
   const band = (W - M.l - M.r) / categories.length;
   const bw = Math.min(46, (band * 0.72) / series.length);
   const step = yt[1] - yt[0];
@@ -170,7 +176,7 @@ export function BarChart({ title, categories, series, yLabel, xLabel, height = 2
             <text x={M.l - 6} y={sy(v) + 4} textAnchor="end">{v.toFixed(dp(v, step))}</text>
           </g>
         ))}
-        <line className="axis" x1={M.l} x2={W - M.r} y1={H - M.b} y2={H - M.b} />
+        <line className="axis" x1={M.l} x2={W - M.r} y1={H - mb} y2={H - mb} />
         {categories.map((c, ci) => {
           const cx = M.l + band * ci + band / 2;
           return (
@@ -181,12 +187,14 @@ export function BarChart({ title, categories, series, yLabel, xLabel, height = 2
                 const x = cx - (bw * series.length) / 2 + si * bw;
                 return (
                   <g key={si}>
-                    <rect x={x} y={sy(v)} width={bw - 2} height={Math.max(0, H - M.b - sy(v))} fill={s.color ?? color(si)} rx={2}><title>{`${s.name} – ${c}: ${format(v)}`}</title></rect>
-                    {series.length * categories.length <= 14 && <text x={x + (bw - 2) / 2} y={sy(v) - 4} textAnchor="middle">{format(v)}</text>}
+                    <rect x={x} y={sy(v)} width={bw - 2} height={Math.max(0, H - mb - sy(v))} fill={s.color ?? color(si)} rx={2}><title>{`${s.name} – ${c}: ${format(v)}`}</title></rect>
+                    {series.length * categories.length <= 14 && v !== 0 && <text x={x + (bw - 2) / 2} y={sy(v) - 4} textAnchor="middle">{format(v)}</text>}
                   </g>
                 );
               })}
-              <text x={cx} y={H - M.b + 16} textAnchor="middle">{c}</text>
+              {rotate
+                ? <text x={cx} y={H - mb + 12} textAnchor="end" transform={`rotate(-40 ${cx} ${H - mb + 12})`}>{c}</text>
+                : <text x={cx} y={H - mb + 16} textAnchor="middle">{c}</text>}
             </g>
           );
         })}

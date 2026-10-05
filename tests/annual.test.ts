@@ -121,6 +121,60 @@ describe('annual projection', () => {
   });
 });
 
+describe('annual projection – air-cooled plant', () => {
+  const air = S({ ...settings, plantType: 'air', ratedTR: 100, ratedKwPerTR: 1.2 });
+  /** kW = 100 + 10·T, TR = 500 + 20·T – exactly linear in dry-bulb temperature, plus optional spikes */
+  function linear(days: number, spikes = 0) {
+    const bms = ['time,kW,TR'];
+    const wx = ['time,Temperature (C)'];
+    let n = 0;
+    for (let d = 0; d < days; d++) for (let h = 0; h < 24; h++) {
+      const T = 24 + 8 * Math.sin(((h - 9) / 24) * 2 * Math.PI) + (d % 5) * 0.9;
+      const stamp = stampOf(new Date(Date.UTC(2026, 6, 1 + d, h)));
+      const spike = n++ < spikes * 17 && n % 17 === 0 ? 400 : 0;
+      for (let q = 0; q < 4; q++) bms.push(`${stamp.slice(0, 14)}${pad(q * 15)},${100 + 10 * +T.toFixed(8) + spike},${500 + 20 * +T.toFixed(8)}`);
+      wx.push(`${stamp},${T.toFixed(8)}`);
+    }
+    return { bms: bms.join('\n'), wx: wx.join('\n') };
+  }
+  const typ = typicalYear(8760, false);
+  const temps = parseWeatherHourly(parseTable(typ), settings).hours.map((h) => h.tempC);
+
+  it('uses dry-bulb temperature and regresses the cooling load directly on it', () => {
+    const p = run(linear(10), typ, air).annual!;
+    expect(p.predictor).toBe('temperature');
+    expect(p.hourly!.loadFrom).toBe('weather');
+    expect(p.hourly!.energyModel.slope).toBeCloseTo(10, 5);
+    expect(p.hourly!.loadModel.slope).toBeCloseTo(20, 5);
+    expect(p.hourly!.loadModel.intercept).toBeCloseTo(500, 3);
+    const kwh = temps.reduce((a, t) => a + Math.max(0, 100 + 10 * t), 0);
+    const trh = temps.reduce((a, t) => a + Math.max(0, 500 + 20 * t), 0);
+    expect(p.hourly!.kWh).toBeCloseTo(kwh, 0);
+    expect(p.hourly!.trHours).toBeCloseTo(trh, 0);
+    expect(p.daily!.kWh / p.hourly!.kWh).toBeCloseTo(1, 4);
+    expect(p.notes.join(' ')).toContain('Air-cooled');
+  });
+  it('reports equivalent full-load hours against the installed electrical capacity', () => {
+    const a = run(linear(10), typ, air);
+    const p = a.annual!;
+    const ratedKW = a.chillers.reduce((t, c) => t + c.ratedTR * c.ratedKwPerTR, 0);
+    expect(ratedKW).toBeGreaterThan(0);
+    expect(p.hourly!.eflh).toBeCloseTo(p.hourly!.kWh / ratedKW, 6);
+  });
+  it('the outlier filter drops spikes and restores the true line', () => {
+    const b = linear(10, 8);
+    const raw = run(b, typ, air).annual!.hourly!;
+    const cut = run(b, typ, S({ ...air, annualOutlierSigma: 2.5 })).annual!.hourly!;
+    expect(raw.energyModel.r2).toBeLessThan(1);
+    expect(cut.outliersPct.energy).toBeGreaterThan(0);
+    expect(cut.energyModel.slope).toBeCloseTo(10, 3);
+    expect(cut.energyModel.r2).toBeGreaterThan(raw.energyModel.r2);
+  });
+  it('water-cooled plants still chain the load through the energy', () => {
+    expect(run(logged(10), typicalYear()).annual!.hourly!.loadFrom).toBe('energy');
+  });
+});
+
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

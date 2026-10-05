@@ -42,6 +42,22 @@ export function resolvePredictor(choice: Settings['annualPredictor'], fit: Hourl
   return { predictor: both('wetbulb') ? 'wetbulb' : 'temperature' };
 }
 
+/** Fit, then (optionally) drop points beyond `sigma` residual standard deviations and refit once. */
+export function trimmedFit(x: number[], y: number[], sigma: number): { fit: NonNullable<ReturnType<typeof lineFit>>; droppedPct: number; keep: boolean[] } | null {
+  const f0 = lineFit(x, y);
+  if (!f0) return null;
+  const keep = x.map(() => true);
+  if (sigma > 0 && x.length >= 10) {
+    const res = x.map((xi, i) => y[i] - (f0.slope * xi + f0.intercept));
+    const sd = Math.sqrt(res.reduce((a, r) => a + r * r, 0) / (res.length - 2));
+    res.forEach((r, i) => { if (Math.abs(r) > sigma * sd) keep[i] = false; });
+    const xs = x.filter((_, i) => keep[i]), ys = y.filter((_, i) => keep[i]);
+    const f1 = lineFit(xs, ys);
+    if (f1) return { fit: f1, droppedPct: (1 - xs.length / x.length) * 100, keep };
+  }
+  return { fit: f0, droppedPct: 0, keep };
+}
+
 function monthOf(ts: number) { return new Date(ts).getUTCMonth(); }
 
 function project(
@@ -50,11 +66,13 @@ function project(
   load: NonNullable<ReturnType<typeof lineFit>>,
   units: { ts: number; x: number }[],
   scale: number,
+  loadFrom: 'energy' | 'weather',
+  extra: { ratedKW: number; outliersPct: { energy: number; load: number } },
 ): AnnualMethodResult {
   const mon = Array.from({ length: 12 }, () => ({ kWh: 0, tr: 0 }));
   for (const u of units) {
     const kwh = Math.max(0, energy.slope * u.x + energy.intercept);
-    const trh = Math.max(0, load.slope * kwh + load.intercept);
+    const trh = Math.max(0, load.slope * (loadFrom === 'weather' ? u.x : kwh) + load.intercept);
     const m = mon[monthOf(u.ts)];
     m.kWh += kwh * scale;
     m.tr += trh * scale;
@@ -63,6 +81,7 @@ function project(
   const trHours = mon.reduce((a, m) => a + m.tr, 0);
   return {
     method, energyModel: energy, loadModel: load, kWh, trHours, kwPerTR: trHours > 0 ? kWh / trHours : NaN,
+    eflh: extra.ratedKW > 0 ? kWh / extra.ratedKW : null, outliersPct: extra.outliersPct, loadFrom,
     monthly: mon.map((m, i) => ({ month: i + 1, kWh: m.kWh, trHours: m.tr, kwPerTR: m.tr > 0 ? m.kWh / m.tr : NaN })),
   };
 }
@@ -74,9 +93,13 @@ function project(
  * x is the wet-bulb temperature (from dry-bulb + humidity), dry-bulb temperature or enthalpy. Negative predictions
  * are clamped to zero. The logged hours used are those the hourly weather analysis kept (plant running).
  */
-export function analyzeAnnual(fit: HourlyWeatherAnalysis, typical: WeatherHourlyData, s: Settings): AnnualProjection {
+export function analyzeAnnual(fit: HourlyWeatherAnalysis, typical: WeatherHourlyData, s: Settings, ratedKW = 0): AnnualProjection {
   const notes: string[] = [];
-  const { predictor, note } = resolvePredictor(s.annualPredictor, fit, typical);
+  const air = s.plantType === 'air';
+  // air-cooled chillers reject heat to the ambient air: dry-bulb temperature drives them, and the cooling load is
+  // regressed directly on that temperature (not through the plant energy)
+  const { predictor, note } = air && s.annualPredictor === 'auto' ? { predictor: 'temperature' as AnnualPredictor, note: undefined } : resolvePredictor(s.annualPredictor, fit, typical);
+  if (air) notes.push('Air-cooled plant: energy and cooling load are each regressed directly on the weather variable' + (s.annualPredictor === 'auto' ? ' (dry-bulb temperature)' : '') + '.');
   if (note) notes.push(note);
   const out: AnnualProjection = {
     typicalFile: typical.fileName, predictor, predictorLabel: LABEL[predictor], fitHours: 0, fitDays: 0, typicalHours: typical.hours.length,
@@ -114,9 +137,12 @@ export function analyzeAnnual(fit: HourlyWeatherAnalysis, typical: WeatherHourly
   }
 
   // ---- hourly chain ----
-  const he = lineFit(pts.map((p) => p.x), pts.map((p) => p.r.kW));
-  const hl = he ? lineFit(pts.map((p) => p.r.kW), pts.map((p) => p.r.tr)) : null;
-  if (he && hl) out.hourly = project('hourly', he, hl, tx, scale);
+  const sig = s.annualOutlierSigma;
+  const loadFrom = air ? 'weather' : 'energy';
+  const heT = trimmedFit(pts.map((p) => p.x), pts.map((p) => p.r.kW), sig);
+  const loadPts = air ? pts.filter((p) => p.r.tr > 0) : pts;
+  const hlT = heT ? (air ? trimmedFit(loadPts.map((p) => p.x), loadPts.map((p) => p.r.tr), sig) : trimmedFit(pts.map((p) => p.r.kW), pts.map((p) => p.r.tr), sig)) : null;
+  if (heT && hlT) out.hourly = project('hourly', heT.fit, hlT.fit, tx, scale, loadFrom, { ratedKW, outliersPct: { energy: heT.droppedPct, load: hlT.droppedPct } });
   else notes.push('The hourly regression could not be computed (weather variable hardly varies).');
 
   // ---- daily chain ----
@@ -137,8 +163,9 @@ export function analyzeAnnual(fit: HourlyWeatherAnalysis, typical: WeatherHourly
   }
   out.fitDays = dayFit.size;
   const dArr = [...dayFit.values()];
-  const de = lineFit(dArr.map((d) => d.x), dArr.map((d) => d.kwh));
-  const dl = de ? lineFit(dArr.map((d) => d.kwh), dArr.map((d) => d.tr)) : null;
+  const deT = trimmedFit(dArr.map((d) => d.x), dArr.map((d) => d.kwh), sig);
+  const dlT = deT ? trimmedFit(dArr.map((d) => (air ? d.x : d.kwh)), dArr.map((d) => d.tr), sig) : null;
+  const de = deT?.fit ?? null, dl = dlT?.fit ?? null;
   if (de && dl) {
     const byDay = new Map<number, { ts: number; x: number; n: number }>();
     for (const h of tx) {
@@ -148,7 +175,7 @@ export function analyzeAnnual(fit: HourlyWeatherAnalysis, typical: WeatherHourly
       byDay.set(d, g);
     }
     const days = [...byDay.values()].filter((g) => g.n === 24);
-    if (days.length >= 300) out.daily = project('daily', de, dl, days, HOURS_PER_YEAR / (days.length * 24));
+    if (days.length >= 300) out.daily = project('daily', de, dl, days, HOURS_PER_YEAR / (days.length * 24), loadFrom, { ratedKW, outliersPct: { energy: deT!.droppedPct, load: dlT!.droppedPct } });
     else notes.push(`Only ${days.length} complete typical days (24 hourly values) – the daily method needs at least 300.`);
   } else notes.push(`Only ${dArr.length} complete logged day(s) with weather – the daily method needs at least 5.`);
 

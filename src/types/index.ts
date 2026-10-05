@@ -48,6 +48,8 @@ export interface Settings {
   annualProposedKwPerTR: number;
   /** Annual projection scenario: safety factor (%) added to the proposed plant's consumption. */
   annualSafetyPct: number;
+  /** Annual projection: drop points whose residual exceeds this many standard deviations (0 = keep all). */
+  annualOutlierSigma: number;
   chillerOverrides: Record<string, { ratedTR?: number; ratedKwPerTR?: number }>;
 }
 
@@ -461,6 +463,12 @@ export interface AnnualMethodResult {
   kWh: number;
   trHours: number;
   kwPerTR: number;
+  /** equivalent full-load hours = annual kWh ÷ installed electrical capacity (null when unknown) */
+  eflh: number | null;
+  /** share of fit points dropped by the outlier filter, % (energy / load) */
+  outliersPct: { energy: number; load: number };
+  /** how the cooling load is modelled: from the energy ('chain') or from the weather ('direct', air-cooled) */
+  loadFrom: 'energy' | 'weather';
   monthly: { month: number; kWh: number; trHours: number; kwPerTR: number }[];
 }
 
