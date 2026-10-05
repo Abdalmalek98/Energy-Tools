@@ -43,6 +43,12 @@ results never depend on upload order.
 * Only hours in which the plant ran (≥ 30 min of rows) are used by default; "include off hours" adds logged off hours as zero-energy hours.
 * Weather stamps are read as hour-starting unless Plant Settings says hour-ending. A time-zone or convention mismatch shows up as a weak or negative temperature slope (the tool says so).
 
+## Annual projection (typical-year weather)
+`analysis/annualize.ts` projects annual consumption from a typical-year hourly weather file (`Plant Settings → Annual projection`, `Data Import → typical year`). The weather driver is the **wet-bulb temperature** (Stull formula from dry-bulb + humidity, `analysis/psychro.ts`), dry-bulb temperature or enthalpy; *Automatic* picks wet-bulb when both the logged-period weather and the typical year carry humidity. Two regression chains, each in two steps (energy vs weather, then cooling load vs energy):
+* **Hourly:** `kWh_h = a·x_h + b`, `TR·h_h = c·kWh_h + d` fitted on the logged running hours, evaluated for every typical hour and summed (negative predictions clamped to 0).
+* **Daily:** `kWh_d = a·Σx_d + b`, `TR·h_d = c·kWh_d + d` fitted on complete logged days (24 hourly values), evaluated for every complete typical day.
+A typical year with other than 8,760 usable hours is scaled to 8,760 (with a note). The annual kW/TR is Σ kWh ÷ Σ TR·h. Optional scenario: proposed kW/TR × (1 + safety %) × annual TR·h versus the hourly-method baseline. The Excel *Annual Projection* sheet recomputes the hourly method with live formulas (including the wet-bulb formula) from editable coefficients. The method follows the "KAIA LC2" chiller-analysis workbook (same regressions, same Stull formula); unlike that workbook, which sums only the weather rows present, the totals here always cover a full year. Aux/pump/tower baselines and chiller-count staging from that workbook are not modelled.
+
 ## Licensing components
 See LICENSING.md. Database schema: `license-server/schema.sql` (licenses, activations, counters, audit).
 

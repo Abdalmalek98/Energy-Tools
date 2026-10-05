@@ -220,5 +220,22 @@ export function buildFindings(a: AnalysisResult, bms: ParsedBms): Finding[] {
       });
     }
   }
+  if (a.annual && (a.annual.hourly || a.annual.daily)) {
+    const p = a.annual;
+    const m = p.hourly ?? p.daily!;
+    const r2 = Math.min(...[p.hourly?.energyModel.r2, p.daily?.energyModel.r2].filter((v): v is number => v !== undefined));
+    const diff = p.methodDifferencePct;
+    const status: Status = r2 < 0.3 || (diff !== null && Math.abs(diff) > 25) ? 'Review' : 'OK';
+    out.push({
+      id: 'annual', status, title: 'Annual projection',
+      text: `With the typical-year weather (${p.predictorLabel.toLowerCase()}) the plant is projected to use ${fmt0(m.kWh)} kWh/yr for ${fmt0(m.trHours)} TR·h at ${fmt(m.kwPerTR, 3)} kW/TR (${m.method} method).` +
+        (diff !== null ? ` The daily and hourly methods differ by ${fmt(Math.abs(diff), 1)} %.` : '') +
+        (r2 < 0.3 ? ` Weather explains little of the logged energy (lowest R² ${fmt(r2, 2)}), so the projection is uncertain.` : '') +
+        (p.scenario ? ` At ${fmt(p.scenario.proposedKwPerTR, 2)} kW/TR (+${fmt0(p.scenario.safetyPct)} % safety) the saving is ${fmt0(p.scenario.savingKWh)} kWh/yr (${fmt(p.scenario.savingPct, 1)} %).` : ''),
+      numbers: [
+        { label: 'kWh/yr', value: fmt0(m.kWh) }, { label: 'TR·h/yr', value: fmt0(m.trHours) }, { label: 'kW/TR', value: fmt(m.kwPerTR, 3) }, { label: 'Lowest R²', value: fmt(r2, 2) },
+      ],
+    });
+  }
   return out;
 }

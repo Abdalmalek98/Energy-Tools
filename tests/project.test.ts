@@ -25,6 +25,13 @@ describe('project files (.cpa)', () => {
     expect(project.loggers[0].data.samples.length).toBe(50);
     expect(project.loggers[0].data.samples[3].kW).toBeNaN();
   });
+  it('round-trips the typical-year weather file', async () => {
+    const p = await sample();
+    p.typicalWeather = { fileName: 'tmy.csv', hours: [{ ts: 0, tempC: 20, rh: 50, enthalpy: 40 }, { ts: 3600000, tempC: 21 }], hasHumidity: true, hasEnthalpy: true, enthalpyComputed: true, rowCount: 2, notes: [] };
+    const { project } = await openProject(await saveProject(p));
+    expect(project.typicalWeather!.hours).toEqual(p.typicalWeather.hours);
+    expect((await openProject(await saveProject(await sample()))).project.typicalWeather).toBeNull();
+  });
   it('backup kind and tamper detection', async () => {
     const bytes = await saveProject(await sample(), 'backup');
     expect((await openProject(bytes)).manifest.kind).toBe('backup');

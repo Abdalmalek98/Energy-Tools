@@ -6,6 +6,7 @@ import { analyzeLogger } from '../fluke/logger';
 import { fmtDate, fmtTs } from '../utils/format';
 import { KW_PER_TR } from '../calculations/units';
 import { attachCharts, type ChartSpec, type SeriesSpec } from './chartxml';
+import { predictorValue } from '../analysis/annualize';
 import { chip, colLetter, q, Sheet, styles } from './sheet';
 
 const DATE_FMT = 'yyyy-mm-dd hh:mm';
@@ -40,7 +41,7 @@ export async function buildWorkbook(input: ExportInput): Promise<ExportOutput> {
     chartsSheet.set(0, 0, 'Charts', styles.title);
     chartsSheet.set(1, 0, 'Native Excel charts. Source ranges are on the "Chart Data" sheet.', styles.sub);
     chartsSheet.widths = Array(20).fill(11);
-    sheets.push(summary, chartsSheet, findingsSheet(a), chillersSheet(a), regressionSheet(a), ...(a.cdd ? [cddSheet(a)] : []), ...(a.weather ? [weatherSheet(a)] : []), loadProfileSheet(a), ph.sheet, chillerDataSheet(a), cd);
+    sheets.push(summary, chartsSheet, findingsSheet(a), chillersSheet(a), regressionSheet(a), ...(a.cdd ? [cddSheet(a)] : []), ...(a.weather ? [weatherSheet(a)] : []), ...(a.annual && a.annual.hourly ? [annualSheet(a)] : []), loadProfileSheet(a), ph.sheet, chillerDataSheet(a), cd);
     if (loggerAnalyses.length) {
       sheets.push(loggerSummarySheet(loggerAnalyses), loggerDataSheet(loggerAnalyses.map((x) => x.data), loggerAnalyses.map((x) => x.an)));
     }
@@ -444,6 +445,22 @@ function chartsFor(a: AnalysisResult, cd: Sheet): ChartSpec[] {
       col += 2;
     }
   }
+  // 12: annual projection – monthly energy by method
+  const an = a.annual;
+  if (an && (an.hourly || an.daily)) {
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    put(col, 'Month', MON as unknown as number[]);
+    const series: SeriesSpec[] = [];
+    let k = col + 1;
+    for (const m of [an.hourly, an.daily]) {
+      if (!m) continue;
+      put(k, `kWh (${m.method})`, m.monthly.map((x) => x.kWh), '#,##0');
+      series.push({ name: `${m.method[0].toUpperCase()}${m.method.slice(1)} method`, xRef: ref(col, 12), yRef: ref(k, 12), xVals: MON, yVals: m.monthly.map((x) => x.kWh), color: PAL[series.length] });
+      k++;
+    }
+    charts.push({ title: 'Projected monthly energy (typical year)', type: 'bar', xTitle: 'Month', yTitle: 'kWh', yFormat: '#,##0', yMin: 0, series, anchor: pos(charts.length) });
+    col = k;
+  }
   cd.widths = Array(col + 1).fill(14);
   return charts;
 }
@@ -511,6 +528,87 @@ function weatherSheet(a: AnalysisResult) {
     for (const n of w.notes) s.set(r++, 0, n, styles.wrap);
   }
   s.widths = [34, 11, 12, 14, 12, 12, 10, 14, 12, 12];
+  return s;
+}
+
+// ---------------------------------------------------------------- annual projection sheet
+/** Hourly method with live formulas (Stull wet-bulb → kWh → TR·h → monthly/annual totals); daily method as results. */
+function annualSheet(a: AnalysisResult) {
+  const p = a.annual!;
+  const h = p.hourly!;
+  const s = new Sheet('Annual Projection');
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  s.set(0, 0, 'Annual projection – typical-year weather', styles.title);
+  s.set(1, 0, `Typical year: ${p.typicalFile}. Driver: ${p.predictorLabel}. Yellow cells are inputs; change the coefficients or the scenario and the sheet recalculates.`, styles.sub);
+  const T0 = 44; // first row of the hourly table (0-based header row)
+  const last = T0 + 1 + p.typical.length; // 1-based last row
+  const first = T0 + 2;
+  const rng = (c: string) => `$${c}$${first}:$${c}$${last}`;
+  // coefficients (rows 4-8, 1-based 5-9)
+  s.set(3, 0, 'Hourly regression (fitted on the logged hours)', styles.section); s.set(3, 1, '', styles.section);
+  s.set(4, 0, 'Energy slope (kWh per driver unit)', styles.label); s.set(4, 1, h.energyModel.slope, styles.input, '0.0000');
+  s.set(5, 0, 'Energy intercept (kWh)', styles.label); s.set(5, 1, h.energyModel.intercept, styles.input, '0.000');
+  s.set(6, 0, 'Load slope (TR·h per kWh)', styles.label); s.set(6, 1, h.loadModel.slope, styles.input, '0.000000');
+  s.set(7, 0, 'Load intercept (TR·h)', styles.label); s.set(7, 1, h.loadModel.intercept, styles.input, '0.000');
+  s.set(8, 0, 'Scale to 8,760 h', styles.label); s.set(8, 1, 8760 / p.typical.length, styles.input, '0.0000');
+  s.set(9, 0, 'R² (energy vs driver / load vs energy)', styles.label); s.set(9, 1, h.energyModel.r2, styles.num, '0.000'); s.set(9, 2, h.loadModel.r2, styles.num, '0.000');
+  // results
+  s.set(11, 0, 'Annual results (hourly method)', styles.section); s.set(11, 1, '', styles.section);
+  s.set(12, 0, 'Annual energy (kWh/yr)', styles.label); s.set(12, 1, { f: `SUM(${rng('F')})*B9`, v: h.kWh }, styles.num, '#,##0');
+  s.set(13, 0, 'Annual cooling (TR·h/yr)', styles.label); s.set(13, 1, { f: `SUM(${rng('G')})*B9`, v: h.trHours }, styles.num, '#,##0');
+  s.set(14, 0, 'Plant efficiency (kW/TR)', styles.label); s.set(14, 1, { f: 'IF(B14>0,B13/B14,"")', v: h.kwPerTR }, styles.num, '0.000');
+  // scenario
+  s.set(16, 0, 'Savings scenario', styles.section); s.set(16, 1, '', styles.section);
+  const sc = p.scenario;
+  s.set(17, 0, 'Proposed efficiency (kW/TR)', styles.label); s.set(17, 1, a.settings.annualProposedKwPerTR, styles.input, '0.000');
+  s.set(18, 0, 'Safety factor (%)', styles.label); s.set(18, 1, a.settings.annualSafetyPct, styles.input, '0');
+  s.set(19, 0, 'Tariff (per kWh)', styles.label); s.set(19, 1, a.settings.tariff, styles.input, '0.000');
+  s.set(20, 0, 'Proposed consumption (kWh/yr)', styles.label); s.set(20, 1, { f: 'IF(B18>0,B14*B18*(1+B19/100),"")', v: sc?.proposedKWh ?? '' }, styles.num, '#,##0');
+  s.set(21, 0, 'Annual saving (kWh/yr)', styles.label); s.set(21, 1, { f: 'IF(B18>0,B13-B21,"")', v: sc?.savingKWh ?? '' }, styles.num, '#,##0');
+  s.set(22, 0, 'Annual saving (%)', styles.label); s.set(22, 1, { f: 'IF(AND(B18>0,B13>0),B22/B13,"")', v: sc ? sc.savingPct / 100 : '' }, styles.num, '0.0%');
+  s.set(23, 0, 'Annual saving (cost)', styles.label); s.set(23, 1, { f: 'IF(B18>0,B22*B20,"")', v: sc?.savingCost ?? '' }, styles.num, '#,##0');
+  // monthly
+  s.set(25, 0, 'Monthly (hourly method)', styles.section); for (let c = 1; c < 4; c++) s.set(25, c, '', styles.section);
+  s.head(26, 0, ['Month', 'kWh', 'TR·h', 'kW/TR']);
+  MON.forEach((mn, i) => {
+    const r = 27 + i, x = r + 1;
+    const m = h.monthly[i];
+    s.set(r, 0, mn, styles.label);
+    s.set(r, 1, { f: `SUMIF(${rng('H')},${i + 1},${rng('F')})*$B$9`, v: m.kWh }, styles.num, '#,##0');
+    s.set(r, 2, { f: `SUMIF(${rng('H')},${i + 1},${rng('G')})*$B$9`, v: m.trHours }, styles.num, '#,##0');
+    s.set(r, 3, { f: `IF(C${x}>0,B${x}/C${x},"")`, v: Number.isFinite(m.kwPerTR) ? m.kwPerTR : '' }, styles.num, '0.000');
+  });
+  // daily method (results)
+  const d = p.daily;
+  s.set(3, 5, 'Daily method (results)', styles.section); for (let c = 6; c < 9; c++) s.set(3, c, '', styles.section);
+  if (d) {
+    s.set(4, 5, 'Energy slope / intercept', styles.label); s.set(4, 6, d.energyModel.slope, styles.num, '0.0000'); s.set(4, 7, d.energyModel.intercept, styles.num, '0.0');
+    s.set(5, 5, 'Load slope / intercept', styles.label); s.set(5, 6, d.loadModel.slope, styles.num, '0.000000'); s.set(5, 7, d.loadModel.intercept, styles.num, '0.0');
+    s.set(6, 5, 'R² (energy / load)', styles.label); s.set(6, 6, d.energyModel.r2, styles.num, '0.000'); s.set(6, 7, d.loadModel.r2, styles.num, '0.000');
+    s.set(7, 5, 'Annual energy (kWh/yr)', styles.label); s.set(7, 6, d.kWh, styles.num, '#,##0');
+    s.set(8, 5, 'Annual cooling (TR·h/yr)', styles.label); s.set(8, 6, d.trHours, styles.num, '#,##0');
+    s.set(9, 5, 'Plant efficiency (kW/TR)', styles.label); s.set(9, 6, d.kwPerTR, styles.num, '0.000');
+    if (p.methodDifferencePct !== null) { s.set(10, 5, 'Daily vs hourly energy', styles.label); s.set(10, 6, p.methodDifferencePct / 100, styles.num, '0.0%'); }
+  } else s.set(4, 5, 'Not available (needs complete logged days and a full typical year).', styles.body);
+  p.notes.forEach((n, i) => s.set(14 + i, 5, n, styles.body));
+  // hourly table
+  s.head(T0, 0, ['Hour (typical year)', 'Temp °C', 'RH %', 'Enthalpy kJ/kg', 'Driver', 'kWh', 'TR·h', 'Month']);
+  s.set(T0 - 1, 0, 'Typical-year hours', styles.section); for (let c = 1; c < 8; c++) s.set(T0 - 1, c, '', styles.section);
+  p.typical.forEach((x, i) => {
+    const rr = T0 + 1 + i, n = rr + 1;
+    const drv = predictorValue(p.predictor, x) as number;
+    const kwh = Math.max(0, h.energyModel.slope * drv + h.energyModel.intercept);
+    const tr = Math.max(0, h.loadModel.slope * kwh + h.loadModel.intercept);
+    const R = `MIN(MAX(C${n},1),100)`;
+    const driver = p.predictor === 'temperature' ? `B${n}` : p.predictor === 'enthalpy' ? `D${n}` : `B${n}*ATAN(0.151977*SQRT(${R}+8.313659))+ATAN(B${n}+${R})-ATAN(${R}-1.676331)+0.00391838*${R}^1.5*ATAN(0.023101*${R})-4.686035`;
+    s.set(rr, 0, toExcelDate(x.ts), styles.num, DATE_FMT);
+    s.set(rr, 1, x.tempC, styles.num, '0.0'); s.set(rr, 2, x.rh ?? '', styles.num, '0'); s.set(rr, 3, x.enthalpy ?? '', styles.num, '0.0');
+    s.set(rr, 4, { f: driver, v: drv }, styles.num, '0.00');
+    s.set(rr, 5, { f: `MAX(0,$B$5*E${n}+$B$6)`, v: kwh }, styles.num, '#,##0');
+    s.set(rr, 6, { f: `MAX(0,$B$7*F${n}+$B$8)`, v: tr }, styles.num, '#,##0');
+    s.set(rr, 7, { f: `MONTH(A${n})`, v: new Date(x.ts).getUTCMonth() + 1 }, styles.num, '0');
+  });
+  s.widths = [38, 14, 14, 16, 12, 12, 12, 8];
   return s;
 }
 

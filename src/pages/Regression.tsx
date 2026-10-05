@@ -6,6 +6,7 @@ import type { RegressionModel, RegressionResult } from '../types';
 import { fmt } from '../utils/format';
 import { CddPanel } from './CddPanel';
 import { WeatherPanel } from './WeatherPanel';
+import { AnnualPanel } from './AnnualPanel';
 
 function ModelDetail({ m, selected }: { m: RegressionModel; selected: boolean }) {
   return (
@@ -31,8 +32,9 @@ export function RegressionPage() {
   if (!reg) return null;
   const tabs = (
     <div className="tabs" role="tablist">
-      {subjects.map((s) => <button key={s.subject} role="tab" aria-selected={sel === s.subject || (sel === 'CDD' || sel === 'WEATHER' ? false : s.subject === reg.subject)} className="tab" onClick={() => setSel(s.subject)}>{s.subject === 'Plant' ? 'Plant' : s.subject}</button>)}
+      {subjects.map((s) => <button key={s.subject} role="tab" aria-selected={sel === s.subject || (sel === 'CDD' || sel === 'WEATHER' || sel === 'ANNUAL' ? false : s.subject === reg.subject)} className="tab" onClick={() => setSel(s.subject)}>{s.subject === 'Plant' ? 'Plant' : s.subject}</button>)}
       {a.weather && <button role="tab" aria-selected={sel === 'WEATHER'} className="tab" onClick={() => setSel('WEATHER')}>Weather (hourly)</button>}
+      {a.weather && <button role="tab" aria-selected={sel === 'ANNUAL'} className="tab" onClick={() => setSel('ANNUAL')}>Annual projection</button>}
       {a.cdd && <button role="tab" aria-selected={sel === 'CDD'} className="tab" onClick={() => setSel('CDD')}>Weather (CDD)</button>}
     </div>
   );
@@ -42,6 +44,15 @@ export function RegressionPage() {
         <PageHead title="Regression" subtitle="Hourly plant power and cooling load against outdoor temperature, enthalpy and humidity, with Guideline 14 hourly limits." />
         {tabs}
         <WeatherPanel a={a} />
+      </>
+    );
+  }
+  if (sel === 'ANNUAL' && a.weather) {
+    return (
+      <>
+        <PageHead title="Regression" subtitle="Annual energy and cooling load projected from a typical-year weather file: hourly and daily regressions on wet-bulb temperature (or temperature / enthalpy)." />
+        {tabs}
+        <AnnualPanel a={a} />
       </>
     );
   }

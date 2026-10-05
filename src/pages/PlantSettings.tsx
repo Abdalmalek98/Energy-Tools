@@ -63,6 +63,13 @@ export function PlantSettingsPage() {
           <NumberField label="Atmospheric pressure (kPa)" value={s.atmPressureKPa} onChange={(v) => set('atmPressureKPa', v)} hint="used to compute enthalpy from temperature + humidity; 101.325 = sea level" />
         </div>
       </Card>
+      <Card title="Annual projection">
+        <div className="form-grid">
+          <Field label="Weather driver"><select value={s.annualPredictor} onChange={(e) => set('annualPredictor', e.target.value as typeof s.annualPredictor)}><option value="auto">Automatic (wet-bulb if humidity exists)</option><option value="wetbulb">Wet-bulb temperature</option><option value="temperature">Dry-bulb temperature</option><option value="enthalpy">Enthalpy</option></select></Field>
+          <NumberField label="Proposed plant efficiency (kW/TR)" value={s.annualProposedKwPerTR} step="0.01" onChange={(v) => set('annualProposedKwPerTR', v)} hint="0 = no savings scenario" />
+          <NumberField label="Safety factor (%)" value={s.annualSafetyPct} onChange={(v) => set('annualSafetyPct', v)} hint="added to the proposed plant's consumption" />
+        </div>
+      </Card>
       {ids.length > 0 && (
         <Card title="Per-chiller ratings (optional overrides)">
           <div className="table-wrap"><table>

@@ -6,7 +6,7 @@ import { fmt0 } from '../utils/format';
 const DELIM: Record<string, string> = { ',': 'comma', ';': 'semicolon', '\t': 'tab' };
 
 export function DataImportPage() {
-  const { weather, weatherError, importWeather, clearWeather, cdd, cddError, importCdd, clearCdd, settings, table, bmsFileName, importBms, importBmsFile, clearBms, parsed, analysisError, setPage, project, newProject, openProjectDialog, saveCurrent, saveAs, exportBackup, importBackup, recent, openRecent } = useStore();
+  const { typicalWeather, typicalWeatherError, importTypicalWeather, clearTypicalWeather, weather, weatherError, importWeather, clearWeather, cdd, cddError, importCdd, clearCdd, settings, table, bmsFileName, importBms, importBmsFile, clearBms, parsed, analysisError, setPage, project, newProject, openProjectDialog, saveCurrent, saveAs, exportBackup, importBackup, recent, openRecent } = useStore();
   const [over, setOver] = useState(false);
   const onDrop = async (e: DragEvent) => {
     e.preventDefault();
@@ -68,6 +68,18 @@ export function DataImportPage() {
           </div>
         ) : <button className="btn" onClick={importWeather}>Import hourly weather file…</button>}
         {weather && weather.notes.length > 0 && <ul className="hint">{weather.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+      </Card>
+      <Card title="Weather – typical year for annual projection (optional)" actions={typicalWeather ? <button className="btn sm danger" onClick={clearTypicalWeather}>Remove</button> : undefined}>
+        <p style={{ marginTop: 0 }}>A typical-year hourly file (8,760 hours: time, <b>temperature</b>, and <b>humidity</b> for the wet-bulb method). With the hourly weather of the logged period above, the tool projects annual kWh, TR·h and kW/TR by regression (hourly and daily methods).</p>
+        {typicalWeatherError && <div style={{ marginBottom: 10 }}><Banner kind="error" title="Cannot use this weather file. "><pre>{typicalWeatherError}</pre></Banner></div>}
+        {typicalWeather ? (
+          <div className="row" style={{ gap: 22 }}>
+            <span><b>{typicalWeather.fileName}</b></span><span><b className="num">{typicalWeather.hours.length.toLocaleString('en-US')}</b> hours</span>
+            <span>humidity {typicalWeather.hasHumidity ? '✓' : '—'}</span>
+            <button className="btn sm" onClick={importTypicalWeather}>Replace…</button>
+          </div>
+        ) : <button className="btn" onClick={importTypicalWeather}>Import typical-year weather file…</button>}
+        {!weather && typicalWeather && <div style={{ marginTop: 8 }}><Banner kind="warn">The annual projection also needs the hourly weather of the logged period (card above).</Banner></div>}
       </Card>
       <Card title="Project">
         <div className="row">

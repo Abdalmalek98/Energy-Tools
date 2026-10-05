@@ -42,6 +42,12 @@ export interface Settings {
   weatherIncludeOffHours: boolean;
   /** Atmospheric pressure (kPa) for computing enthalpy from temperature + humidity. */
   atmPressureKPa: number;
+  /** Annual projection: weather variable driving the regressions ('auto' = wet-bulb when humidity exists, else temperature). */
+  annualPredictor: AnnualPredictorChoice;
+  /** Annual projection scenario: proposed plant efficiency in kW/TR (0 = no scenario). */
+  annualProposedKwPerTR: number;
+  /** Annual projection scenario: safety factor (%) added to the proposed plant's consumption. */
+  annualSafetyPct: number;
   chillerOverrides: Record<string, { ratedTR?: number; ratedKwPerTR?: number }>;
 }
 
@@ -250,6 +256,8 @@ export interface AnalysisResult {
   cdd: CddAnalysis | null;
   /** Present when the customer uploaded hourly weather data. */
   weather: HourlyWeatherAnalysis | null;
+  /** Annual projection from a typical-year weather file (hourly + daily regression methods). */
+  annual: AnnualProjection | null;
 }
 
 // ---- Logger (Fluke) ----
@@ -372,6 +380,9 @@ export interface CddAnalysis {
 
 // ---- Hourly weather (temperature, optional humidity / enthalpy) ----
 
+export type AnnualPredictorChoice = 'auto' | 'wetbulb' | 'temperature' | 'enthalpy';
+export type AnnualPredictor = 'wetbulb' | 'temperature' | 'enthalpy';
+
 export interface WeatherHour {
   ts: number; // start of the hour, ms (naive local time encoded as UTC)
   tempC: number;
@@ -437,5 +448,47 @@ export interface HourlyWeatherAnalysis {
   hasHumidity: boolean;
   hasEnthalpy: boolean;
   enthalpyComputed: boolean;
+  notes: string[];
+}
+
+// ---- Annual projection (typical-year weather) ----
+
+export interface AnnualMethodResult {
+  method: 'hourly' | 'daily';
+  /** step 1: energy vs weather predictor; step 2: cooling load vs energy */
+  energyModel: { slope: number; intercept: number; r2: number; n: number };
+  loadModel: { slope: number; intercept: number; r2: number; n: number };
+  kWh: number;
+  trHours: number;
+  kwPerTR: number;
+  monthly: { month: number; kWh: number; trHours: number; kwPerTR: number }[];
+}
+
+export interface AnnualScenario {
+  proposedKwPerTR: number;
+  safetyPct: number;
+  proposedKWh: number;
+  savingKWh: number;
+  savingPct: number;
+  savingCost: number;
+}
+
+export interface AnnualProjection {
+  typicalFile: string;
+  predictor: AnnualPredictor;
+  predictorLabel: string;
+  /** logged hours / days used to fit the models */
+  fitHours: number;
+  fitDays: number;
+  typicalHours: number;
+  /** typical year had fewer than 8,760 hours and the totals were scaled */
+  scaledFrom: number | null;
+  /** typical-year hours that entered the projection (for the Excel sheet) */
+  typical: WeatherHour[];
+  hourly: AnnualMethodResult | null;
+  daily: AnnualMethodResult | null;
+  /** hourly vs daily annual kWh difference, % of the hourly figure */
+  methodDifferencePct: number | null;
+  scenario: AnnualScenario | null;
   notes: string[];
 }

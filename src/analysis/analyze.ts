@@ -14,6 +14,7 @@ import { buildFindings } from './findings';
 import { analyzeCdd } from './cddAnalysis';
 import { analyzeHourlyWeather } from './weatherAnalysis';
 import { weatherToCdd } from './weather';
+import { analyzeAnnual } from './annualize';
 
 const fin = (a: number[]) => a.filter(Number.isFinite);
 
@@ -49,6 +50,8 @@ export interface AnalysisInput {
   cdd?: CddData | null;
   /** Customer-supplied hourly weather (temperature, optional humidity / enthalpy) */
   weather?: WeatherHourlyData | null;
+  /** Typical-year hourly weather (8,760 h) for the annual projection */
+  typicalWeather?: WeatherHourlyData | null;
 }
 
 export function analyze(input: AnalysisInput): AnalysisResult {
@@ -134,6 +137,7 @@ export function analyze(input: AnalysisInput): AnalysisResult {
     sources: { bmsFile: input.bmsFileName, loggers: attachments.map((a) => a.logger.fileName) },
     cdd: null,
     weather: null,
+    annual: null,
   };
   const cddInput = input.cdd ?? (input.weather ? weatherToCdd(input.weather, s) : null);
   if ((cddInput || input.weather) && kept.length) {
@@ -150,6 +154,7 @@ export function analyze(input: AnalysisInput): AnalysisResult {
     }
     if (cddInput) result.cdd = analyzeCdd(plant, dtH, perDay, cddInput, s);
     if (input.weather) result.weather = analyzeHourlyWeather(plant, dtH, perHour, input.weather, s);
+    if (result.weather && input.typicalWeather) result.annual = analyzeAnnual(result.weather, input.typicalWeather, s);
   }
   result.findings = kept.length ? buildFindings(result, bms) : [];
   return result;

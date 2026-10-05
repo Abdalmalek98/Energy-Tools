@@ -23,6 +23,7 @@ export interface ProjectState {
   loggers: { data: LoggerData; chiller: string }[];
   cdd?: CddData | null;
   weather?: WeatherHourlyData | null;
+  typicalWeather?: WeatherHourlyData | null;
   results?: unknown;
 }
 
@@ -56,6 +57,7 @@ export async function saveProject(p: ProjectState, kind: 'project' | 'backup' = 
   if (p.loggers.length) files['loggers.json'] = enc(p.loggers);
   if (p.cdd) files['cdd.json'] = enc(p.cdd);
   if (p.weather) files['weather.json'] = enc(p.weather);
+  if (p.typicalWeather) files['typical-weather.json'] = enc(p.typicalWeather);
   const hashes: Record<string, string> = {};
   for (const [n, d] of Object.entries(files)) {
     zip.file(n, d);
@@ -91,6 +93,7 @@ export async function openProject(bytes: Uint8Array): Promise<{ project: Project
   const loggers = ((await read('loggers.json')) ?? []) as ProjectState['loggers'];
   const cdd = ((await read('cdd.json')) ?? null) as CddData | null;
   const weather = ((await read('weather.json')) ?? null) as WeatherHourlyData | null;
+  const typicalWeather = ((await read('typical-weather.json')) ?? null) as WeatherHourlyData | null;
   const results = await read('results.json');
-  return { manifest, project: { name: manifest.name, settings, mapping: mp.mapping ?? {}, bmsFileName: mp.bmsFileName, bmsTable, loggers, cdd, weather, results } };
+  return { manifest, project: { name: manifest.name, settings, mapping: mp.mapping ?? {}, bmsFileName: mp.bmsFileName, bmsTable, loggers, cdd, weather, typicalWeather, results } };
 }
