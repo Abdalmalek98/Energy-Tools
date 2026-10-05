@@ -66,6 +66,11 @@ export function personalSet(p: { provider?: Provider; apiKey?: string; model?: s
   return personalGet();
 }
 
+/** The provider's own short reason (never contains our key). */
+async function providerReason(res: Response): Promise<string> {
+  try { const j = (await res.json()) as { error?: { message?: string } | string }; const m = typeof j.error === "string" ? j.error : j.error?.message ?? ""; return m.replace(/\s+/g, " ").slice(0, 160); } catch { return ""; }
+}
+
 /** Asks the active provider which models this key can use (reads no page). */
 export async function personalTest() {
   const s = load(); const name = current(s); const e = s[name] ?? {};
@@ -73,7 +78,11 @@ export async function personalTest() {
   let res: Response;
   try { res = await fetch(`${baseOf(name)}/models`, { headers: { authorization: `Bearer ${e.apiKey}` }, signal: AbortSignal.timeout(15_000) }); }
   catch { return { ok: false, message: `Could not reach ${PROVIDERS[name].label}. Check this PC's internet connection.`, models: [] }; }
-  if (res.status === 400 || res.status === 401 || res.status === 403) return { ok: false, message: `${PROVIDERS[name].label} rejected this API key.`, models: [] };
+  if (res.status === 400 || res.status === 401 || res.status === 403) {
+    const why = await providerReason(res);
+    const wrong = name === "gemini" && e.apiKey.startsWith("gsk_") ? " This looks like a Groq key (gsk_…): choose Groq above, or paste your Gemini key." : name === "groq" && e.apiKey.startsWith("AIza") ? " This looks like a Gemini key (AIza…): choose Google Gemini above." : "";
+    return { ok: false, message: `${PROVIDERS[name].label} rejected this API key${why ? ` (“${why}”)` : ""}.${wrong} Paste the key again with no spaces or quotes; for Gemini create it at aistudio.google.com/apikey.`, models: [] };
+  }
   if (!res.ok) return { ok: false, message: `${PROVIDERS[name].label} answered HTTP ${res.status}.`, models: [] };
   const j = (await res.json().catch(() => ({}))) as { data?: { id?: string }[] };
   const models = (j.data ?? []).map((m) => String(m.id ?? "").replace(/^models\//, "")).filter(Boolean).sort();
@@ -105,7 +114,7 @@ export async function personalReadPage(images: Uint8Array[], hint?: string): Pro
     });
   } catch { return fail("network", `Could not reach ${label}. Check this PC's internet connection.`, true); }
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) return fail("provider_auth", `${label} rejected your API key. Check it in Settings.`);
+    if (res.status === 401 || res.status === 403) return fail("provider_auth", `${label} rejected your API key. Check it in Settings (Test connection).`);
     if (res.status === 404) return fail("provider_model", `${label} does not know the model "${model}". Choose a vision model in Settings.`);
     if (res.status === 400 || res.status === 413) return fail("provider_input", `${label} could not accept this page (${res.status}). The model may not support images, or the key is not valid.`);
     return fail("provider_busy", `${label} is busy or its free limit was reached (${res.status}). Wait a minute and try again.`, res.status === 429 || res.status >= 500);
