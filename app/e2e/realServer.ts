@@ -57,7 +57,7 @@ export async function startUpstream(pages: unknown[]) {
 }
 
 /** Stub of Groq's OpenAI-compatible API: GET /models and POST /chat/completions (records the request). */
-export async function startGroqUpstream(pages: unknown[]) {
+export async function startGroqUpstream(pages: unknown[], opts: { models?: string[]; goneModel?: string } = {}) {
   const calls: { method: string; url: string; auth?: string; model?: string; images: number }[] = [];
   const s: Server = createServer((q, r) => {
     const ch: Buffer[] = []; q.on("data", (c) => ch.push(c));
@@ -65,8 +65,9 @@ export async function startGroqUpstream(pages: unknown[]) {
       const raw = Buffer.concat(ch).toString(); const b = raw ? JSON.parse(raw) : {};
       const images = (b.messages?.[1]?.content ?? []).filter((c: any) => c.type === "image_url").length;
       calls.push({ method: q.method ?? "", url: q.url ?? "", auth: q.headers.authorization, model: b.model, images });
+      if (q.method === "POST" && opts.goneModel && b.model === opts.goneModel) { r.writeHead(404, { "content-type": "application/json" }); return void r.end(JSON.stringify({ error: { message: "model not found" } })); }
       r.writeHead(200, { "content-type": "application/json" });
-      if (q.method === "GET") return void r.end(JSON.stringify({ data: [{ id: "e2e-vision-a" }, { id: "e2e-vision-b" }] }));
+      if (q.method === "GET") return void r.end(JSON.stringify({ data: (opts.models ?? ["e2e-vision-a", "e2e-vision-b"]).map((id) => ({ id })) }));
       const n = calls.filter((c) => c.method === "POST").length;
       r.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(pages[(n - 1) % pages.length]) }, finish_reason: "stop" }], usage: { prompt_tokens: 900, completion_tokens: 250 } }));
     });

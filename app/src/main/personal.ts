@@ -2,6 +2,7 @@ import { app, safeStorage } from "electron";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { AesBox } from "@lsr/licensing";
+import { pickGeminiModel } from "./pickModel";
 import { hintText, ModelPage, SYSTEM_PROMPT } from "@lsr/shared";
 
 /**
@@ -71,29 +72,47 @@ async function providerReason(res: Response): Promise<string> {
   try { const j = (await res.json()) as { error?: { message?: string } | string }; const m = typeof j.error === "string" ? j.error : j.error?.message ?? ""; return m.replace(/\s+/g, " ").slice(0, 160); } catch { return ""; }
 }
 
+async function listModels(name: Provider, key: string): Promise<{ status: number; models: string[]; reason: string }> {
+  const res = await fetch(`${baseOf(name)}/models`, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) return { status: res.status, models: [], reason: await providerReason(res) };
+  const j = (await res.json().catch(() => ({}))) as { data?: { id?: string }[] };
+  return { status: 200, models: (j.data ?? []).map((m) => String(m.id ?? "").replace(/^models\//, "")).filter(Boolean).sort(), reason: "" };
+}
+/** When the saved Gemini model is gone from Google's list, choose a current one and save it. Returns it, or null. */
+async function repairGeminiModel(): Promise<string | null> {
+  const s = load(); const e = s.gemini; if (!e?.apiKey) return null;
+  try {
+    const l = await listModels("gemini", e.apiKey); const pick = pickGeminiModel(l.models);
+    if (!pick || pick === (e.model || PROVIDERS.gemini.defaultModel)) return null;
+    s.gemini = { ...e, model: pick }; save(s); return pick;
+  } catch { return null; }
+}
+
 /** Asks the active provider which models this key can use (reads no page). */
 export async function personalTest() {
   const s = load(); const name = current(s); const e = s[name] ?? {};
   if (!e.apiKey) return { ok: false, message: `No ${PROVIDERS[name].label} API key is saved yet.`, models: [] as string[] };
-  let res: Response;
-  try { res = await fetch(`${baseOf(name)}/models`, { headers: { authorization: `Bearer ${e.apiKey}` }, signal: AbortSignal.timeout(15_000) }); }
+  let l: Awaited<ReturnType<typeof listModels>>;
+  try { l = await listModels(name, e.apiKey); }
   catch { return { ok: false, message: `Could not reach ${PROVIDERS[name].label}. Check this PC's internet connection.`, models: [] }; }
-  if (res.status === 400 || res.status === 401 || res.status === 403) {
-    const why = await providerReason(res);
+  if (l.status === 400 || l.status === 401 || l.status === 403) {
     const wrong = name === "gemini" && e.apiKey.startsWith("gsk_") ? " This looks like a Groq key (gsk_…): choose Groq above, or paste your Gemini key." : name === "groq" && e.apiKey.startsWith("AIza") ? " This looks like a Gemini key (AIza…): choose Google Gemini above." : "";
-    return { ok: false, message: `${PROVIDERS[name].label} rejected this API key${why ? ` (“${why}”)` : ""}.${wrong} Paste the key again with no spaces or quotes; for Gemini create it at aistudio.google.com/apikey.`, models: [] };
+    return { ok: false, message: `${PROVIDERS[name].label} rejected this API key${l.reason ? ` (“${l.reason}”)` : ""}.${wrong} Paste the key again with no spaces or quotes; for Gemini create it at aistudio.google.com/apikey.`, models: [] };
   }
-  if (!res.ok) return { ok: false, message: `${PROVIDERS[name].label} answered HTTP ${res.status}.`, models: [] };
-  const j = (await res.json().catch(() => ({}))) as { data?: { id?: string }[] };
-  const models = (j.data ?? []).map((m) => String(m.id ?? "").replace(/^models\//, "")).filter(Boolean).sort();
+  if (l.status !== 200) return { ok: false, message: `${PROVIDERS[name].label} answered HTTP ${l.status}.`, models: [] };
   const model = e.model || PROVIDERS[name].defaultModel;
-  return { ok: true, message: models.length && !models.includes(model) ? `Key accepted, but the model "${model}" is not in your list. Pick one from the list.` : "Key accepted.", models };
+  if (l.models.length && !l.models.includes(model)) {
+    const pick = name === "gemini" ? await repairGeminiModel() : null;
+    if (pick) return { ok: true, message: `Key accepted. The model "${model}" is no longer offered, so I switched to "${pick}".`, models: l.models };
+    return { ok: true, message: `Key accepted, but the model "${model}" is not in your list. Pick one from the list.`, models: l.models };
+  }
+  return { ok: true, message: "Key accepted.", models: l.models };
 }
 
 type ReadResult = { ok: true; page: unknown } | { ok: false; error: string; message: string; retryable?: boolean };
 const fail = (error: string, message: string, retryable = false): ReadResult => ({ ok: false, error, message, retryable });
 
-export async function personalReadPage(images: Uint8Array[], hint?: string): Promise<ReadResult> {
+export async function personalReadPage(images: Uint8Array[], hint?: string, repaired = false): Promise<ReadResult> {
   const saved = load(); const name = current(saved); const label = PROVIDERS[name].label; const e = saved[name] ?? {};
   if (!e.apiKey) return fail("not_configured", `No ${label} API key yet. Open Settings and paste your key.`);
   const model = e.model || PROVIDERS[name].defaultModel;
@@ -115,6 +134,7 @@ export async function personalReadPage(images: Uint8Array[], hint?: string): Pro
   } catch { return fail("network", `Could not reach ${label}. Check this PC's internet connection.`, true); }
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) return fail("provider_auth", `${label} rejected your API key. Check it in Settings (Test connection).`);
+    if ((res.status === 404 || res.status === 400) && name === "gemini" && !repaired && (await repairGeminiModel())) return personalReadPage(images, hint, true);   // the saved model was retired: pick a current one and retry once
     if (res.status === 404) return fail("provider_model", `${label} does not know the model "${model}". Choose a vision model in Settings.`);
     if (res.status === 400 || res.status === 413) return fail("provider_input", `${label} could not accept this page (${res.status}). The model may not support images, or the key is not valid.`);
     return fail("provider_busy", `${label} is busy or its free limit was reached (${res.status}). Wait a minute and try again.`, res.status === 429 || res.status >= 500);

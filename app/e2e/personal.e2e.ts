@@ -65,3 +65,26 @@ test("personal build: no activation screen, Gemini (default) and Groq keys are s
   } finally { await app.close(); await groq.close(); }
 });
 const statSafe = (p: string) => { try { return existsSync(p) && readFileSync(p).length > 0; } catch { return false; } };
+
+test("personal build: when Google retires the saved Gemini model, a read switches to a current one by itself and succeeds", async () => {
+  execSync("npx electron-vite build", { cwd: APP, stdio: "inherit", env: { ...process.env, LSR_E2E: "1", LSR_PERSONAL: "1" } });
+  const groq = await startGroqUpstream([page1, page1, page1], { models: ["models/gemini-2.5-pro", "models/gemini-3-flash", "models/text-embedding-004"], goneModel: "gemini-old-flash" });
+  const data = mkdtempSync(path.join(tmpdir(), "lsr-pers-"));
+  const pdf = path.join(data, "g.pdf"); copyFileSync(path.join(REF, "samples", "Al-Fatiha_Center_-_________________.pdf"), pdf);
+  const app = await electron.launch({ args: ["--no-sandbox", "--disable-gpu", APP], env: { ...process.env, LSR_USER_DATA: data, LSR_E2E: "1", LSR_GEMINI_BASE: "http://127.0.0.1:8791", LSR_E2E_OPEN: JSON.stringify([pdf]) } as Record<string, string> });
+  try {
+    const page = await app.firstWindow();
+    await page.getByTestId("tab-settings").click();
+    await page.locator("#pg-key").fill("AIza_RETIRED_KEY_1234567890"); await page.locator("#pg-model").fill("gemini-old-flash");
+    await page.getByTestId("personal-save").click();
+    await page.getByTestId("personal-test").click();                              // Test connection already repairs the model
+    await expect(page.getByTestId("personal-msg")).toContainText('switched to "gemini-3-flash"');
+    await page.locator("#pg-model").fill("gemini-old-flash"); await page.getByTestId("personal-save").click();   // put the retired one back, then read
+    await page.getByTestId("tab-home").click(); await page.getByTestId("new-project").click(); await page.getByTestId("add-files").click();
+    await expect(page.locator('[data-testid^="page-"]')).toHaveCount(3);
+    await page.getByTestId("read-pages").click(); await expect(page.getByTestId("page-done")).toHaveCount(3);
+    const posts = groq.calls.filter((c) => c.method === "POST");
+    expect(posts.some((c) => c.model === "gemini-old-flash")).toBe(true);        // tried the retired model first
+    expect(posts.filter((c) => c.model === "gemini-3-flash").length).toBeGreaterThanOrEqual(3);   // then read everything with the new one
+  } finally { await app.close(); await groq.close(); }
+});
